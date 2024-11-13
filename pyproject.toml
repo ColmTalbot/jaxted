@@ -1,0 +1,77 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "setuptools_scm[toml]>=3.4.3",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jaxted"
+authors = [
+    {name = "Colm Talbot", email = "talbotcolm@gmail.com"},
+    {name = "Joshua S Speagle", email = "j.speagle@utoronto.ca"},
+    {name = "Sergey E Koposov"}
+]
+description = "A jaxified dynamic nested sampling package for computing Bayesian posteriors and evidences."
+license = {text = "MIT"}
+keywords = [
+    "nested sampling",
+    "dynamic",
+    "monte carlo",
+    "bayesian",
+    "inference",
+    "modeling",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English", "Programming Language :: Python",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Intended Audience :: Science/Research",
+]
+dependencies = [
+    "numpy >= 2",
+    "scipy >= 1.4.0",
+    "matplotlib",
+    "jax >= 0.4.34",
+    "dynesty >= 2.1",
+    "h5py",
+    "tqdm",
+]
+readme = {file = "README.md", content-type = "text/markdown"}
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+    "coveralls",
+    "dill",
+    "h5py",
+    "tqdm",
+    "jupyter",
+    "ipyparallel",
+    "pylint",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "numpydoc",
+]
+
+[project.entry-points."bilby.samplers"]
+jaxted = "jaxted.bilby:Jaxted"
+
+[project.urls]
+homepage = "https://github.com/colmtalbot/jaxted"
+
+[tool.setuptools.package-data]
+"*" = ["README.md", "LICENSE", "AUTHORS.md", "CHANGELOG.md", "TESTING.md"]
+
+[tool.setuptools.packages.find]
+where = ["py"]
+namespaces = false
+
+[tool.setuptools_scm]
+write_to = "py/jaxted/_version.py"
