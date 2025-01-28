@@ -7,22 +7,21 @@ from .utils import logsubexp
 from .nssmc import initialize, mutate
 
 __all__ = [
-    "nest",
-    "null_func",
-    "replace_func",
     "digest",
+    "null_func",
     "outer_step",
+    "replace_func",
     "run_nest",
 ]
 
 
-def nest(
+def run_nest(
     likelihood_fn,
     ln_prior_fn,
     sample_prior,
     *,
     boundary_fn=None,
-    levels,
+    sub_iterations=10,
     population_size=1000,
     nsteps=500,
     rseed=20,
@@ -30,7 +29,7 @@ def nest(
 ):
     state = initialize(likelihood_fn, sample_prior, population_size, rseed)
 
-    @scan_tqdm(len(levels), print_rate=1)
+    @scan_tqdm(sub_iterations, print_rate=1)
     def body_func(state, level):
         return outer_step(
             state,
@@ -43,7 +42,7 @@ def nest(
     state, output = jax.lax.scan(
         body_func,
         state,
-        levels,
+        jax.numpy.arange(sub_iterations),
     )
     rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = state
     dlogz_ = jax.numpy.log1p(
@@ -57,7 +56,7 @@ def nest(
         state, new_output = jax.lax.scan(
             body_func,
             state,
-            levels,
+            jax.numpy.arange(sub_iterations),
         )
         rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = (
             state
@@ -169,27 +168,4 @@ def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, nsteps):
         digest,
         state,
         new_samples,
-    )
-
-
-def run_nest(
-    likelihood_fn,
-    ln_prior_fn,
-    sample_prior,
-    boundary_fn,
-    *,
-    population_size=1000,
-    nsteps=400,
-    rseed=1,
-    sub_iterations=10,
-):
-    return nest(
-        likelihood_fn,
-        ln_prior_fn,
-        sample_prior,
-        boundary_fn=boundary_fn,
-        levels=jax.numpy.arange(sub_iterations),
-        population_size=population_size,
-        nsteps=nsteps,
-        rseed=rseed,
     )

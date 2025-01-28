@@ -138,10 +138,10 @@ class Jaxted(Sampler):
         else:
             raise ValueError("Unknown sampling method")
         ln_z, ln_zerr, samples = sampler(
-            likelihood_fn,
-            ln_prior_fn,
-            sample_fn,
-            boundary_fn,
+            likelihood_fn=likelihood_fn,
+            ln_prior_fn=ln_prior_fn,
+            sample_prior=sample_fn,
+            boundary_fn=boundary_fn,
             **self.kwargs,
         )
         self.result = self.create_result(samples, ln_z, ln_zerr)
