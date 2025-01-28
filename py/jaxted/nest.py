@@ -42,32 +42,26 @@ def run_nest(
         )
 
     state, output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
-    rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = state
+    _, ln_normalization, ln_evidence, _, _, ln_likelihoods = state
     dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
     output = {key: output[key].flatten() for key in output}
     while dlogz_ > dlogz:
         print(
             f"dlogz = {dlogz_:.2f} > {dlogz:.2f} running again ({ln_evidence:.2f}, {ln_normalization:.2f})"
         )
-        state, new_output = jax.lax.scan(
-            body_func,
-            state,
-            jnp.arange(sub_iterations),
-        )
-        rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = (
-            state
-        )
+        state, new_output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
+        _, ln_normalization, ln_evidence, _, _, ln_likelihoods = state
         dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
         output = {
             key: jnp.concatenate([output[key], new_output[key].flatten()])
             for key in output
         }
 
+    rng_key, ln_normalization, _, _, samples, ln_likelihoods = state
     ln_post_weights = ln_normalization + ln_likelihoods - jnp.log(nlive)
 
     output["ln_weights"] = jnp.concatenate([output["ln_weights"], ln_post_weights])
     output["ln_likelihood"] = jnp.concatenate([output["ln_likelihood"], ln_likelihoods])
-    output = {key: output[key].flatten() for key in output}
     for key in samples:
         output[key] = jnp.concatenate([output[key], samples[key]])
 
