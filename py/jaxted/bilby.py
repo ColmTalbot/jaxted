@@ -1,16 +1,26 @@
 import os
 from importlib.metadata import version
+from functools import partial
 
 import dill
+import jax
+import numpy as np
+import pandas as pd
 from bilby.core.utils import (
     check_directory_exists_and_if_not_mkdir,
     logger,
     safe_file_dump,
 )
-from bilby.core.sampler.dynesty import Dynesty, _set_sampling_kwargs
+from bilby.core.sampler.base_sampler import Sampler
+from bilby.core.result import Result
+from bilby.compat.jax import generic_bilby_likelihood_function
+
+from .nest import run_nest
+from .smc import run_nssmc_anssmc
+from .utils import apply_boundary, generic_bilby_ln_prior
 
 
-class Jaxted(Dynesty):
+class Jaxted(Sampler):
     """
     bilby wrapper of `dynesty.NestedSampler`
     (https://dynesty.readthedocs.io/en/latest/)
@@ -105,30 +115,53 @@ class Jaxted(Dynesty):
     """
 
     sampler_name = "jaxted"
-    sampling_seed_key = "seed"
+    sampling_seed_key = "rseed"
+    default_kwargs = dict(method="nest", nsteps=500, population_size=500, rseed=1, alpha=np.exp(-1))
 
-    @property
-    def _dynesty_init_kwargs(self):
-        kwargs = Dynesty._dynesty_init_kwargs.fget(self)
-        kwargs["sample"] = "rwalk_jax"
-        kwargs["bound"] = "live"
-        return kwargs
+    def run_sampler(self):
+        likelihood_fn = jax.vmap(partial(
+            generic_bilby_likelihood_function,
+            self.likelihood,
+            use_ratio=self.use_ratio
+        ))
+        boundary_fn = partial(apply_boundary, priors=self.priors)
+        ln_prior_fn = partial(generic_bilby_ln_prior, priors=self.priors)
+        sample_fn = self.priors.sample
 
-    @property
-    def sampler_init(self):
-        from .dynesty import NestedSampler
+        method = self.kwargs.pop("method", "nest")
+        if method == "nest":
+            sampler = run_nest
+            self.kwargs.pop("alpha")
+        elif method == "smc":
+            sampler = run_nssmc_anssmc
+        else:
+            raise ValueError("Unknown sampling method")
+        ln_z, ln_zerr, samples = sampler(
+            likelihood_fn,
+            ln_prior_fn,
+            sample_fn,
+            boundary_fn,
+            **self.kwargs,
+        )
+        self.result = self.create_result(samples, ln_z, ln_zerr)
+        self.kwargs["method"] = method
+        return self.result
 
-        return NestedSampler
 
-    @property
-    def sampler_class(self):
-        from .sampler import Sampler
+    def create_result(self, samples, ln_z, ln_zerr):
+        posterior_samples = pd.DataFrame(samples)
+        return Result(
+            label=self.label,
+            outdir=self.outdir,
+            posterior=posterior_samples,
+            log_evidence=float(ln_z),
+            search_parameter_keys=self.search_parameter_keys,
+            priors=self.priors,
+            log_noise_evidence=self.likelihood.noise_log_likelihood(),
+            log_evidence_err=ln_zerr,
+            log_bayes_factor=float(ln_z) - self.likelihood.noise_log_likelihood(),
+        )
 
-        return Sampler
-
-    def _set_sampling_method(self):
-        """This is retained to clobber the parent class method"""
-        _set_sampling_kwargs((self.nact, self.maxmcmc, self.proposals, self.naccept))
 
     def _setup_pool(self):
         """
@@ -139,102 +172,3 @@ class Jaxted(Dynesty):
         self.kwargs["npool"] = 1
         super()._setup_pool()
 
-    def read_saved_state(self, continuing=False):
-        """
-        Read a pickled saved state of the sampler to disk.
-
-        If the live points are present and the run is continuing
-        they are removed.
-        The random state must be reset, as this isn't saved by the pickle.
-        `nqueue` is set to a negative number to trigger the queue to be
-        refilled before the first iteration.
-        The previous run time is set to self.
-
-        Parameters
-        ==========
-        continuing: bool
-            Whether the run is continuing or terminating, if True, the loaded
-            state is mostly written back to disk.
-        """
-        jaxted_version = version("jaxted")
-        bilby_version = version("bilby")
-
-        versions = dict(bilby=bilby_version, jaxted=jaxted_version)
-        if os.path.isfile(self.resume_file):
-            logger.info(f"Reading resume file {self.resume_file}")
-            with open(self.resume_file, "rb") as file:
-                try:
-                    sampler = dill.load(file)
-                except EOFError:
-                    sampler = None
-
-                if not hasattr(sampler, "versions"):
-                    logger.warning(
-                        f"The resume file {self.resume_file} is corrupted or "
-                        "the version of bilby has changed between runs. This "
-                        "resume file will be ignored."
-                    )
-                    return False
-                version_warning = (
-                    "The {code} version has changed between runs. "
-                    "This may cause unpredictable behaviour and/or failure. "
-                    "Old version = {old}, new version = {new}."
-                )
-                for code in versions:
-                    if not versions[code] == sampler.versions.get(code, None):
-                        logger.warning(
-                            version_warning.format(
-                                code=code,
-                                old=sampler.versions.get(code, "None"),
-                                new=versions[code],
-                            )
-                        )
-                del sampler.versions
-                self.sampler = sampler
-                if getattr(self.sampler, "added_live", False) and continuing:
-                    self.sampler._remove_live_points()
-                self.sampler.nqueue = -1
-                self.start_time = self.sampler.kwargs.pop("start_time")
-                self.sampling_time = self.sampler.kwargs.pop("sampling_time")
-                self.sampler.queue_size = self.kwargs["queue_size"]
-                self.sampler.pool = None
-                self.sampler.M = map
-            return True
-        else:
-            logger.info(f"Resume file {self.resume_file} does not exist.")
-            return False
-
-    def write_current_state(self):
-        """
-        Write the current state of the sampler to disk.
-
-        The sampler is pickle dumped using `dill`.
-        The sampling time is also stored to get the full CPU time for the run.
-
-        The check of whether the sampler is picklable is to catch an error
-        when using pytest. Hopefully, this message won't be triggered during
-        normal running.
-        """
-        jaxted_version = version("jaxted")
-        bilby_version = version("bilby")
-
-        if getattr(self, "sampler", None) is None:
-            # Sampler not initialized, not able to write current state
-            return
-
-        check_directory_exists_and_if_not_mkdir(self.outdir)
-        if hasattr(self, "start_time"):
-            self._update_sampling_time()
-            self.sampler.kwargs["sampling_time"] = self.sampling_time
-            self.sampler.kwargs["start_time"] = self.start_time
-        self.sampler.versions = dict(bilby=bilby_version, jaxted=jaxted_version)
-        self.sampler.pool = None
-        self.sampler.M = map
-        if dill.pickles(self.sampler):
-            safe_file_dump(self.sampler, self.resume_file, dill)
-            logger.info(f"Written checkpoint file {self.resume_file}")
-        else:
-            logger.warning(
-                "Cannot write pickle resume file! "
-                "Job will not resume if interrupted."
-            )
