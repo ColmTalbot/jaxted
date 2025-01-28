@@ -1,16 +1,9 @@
 import os
-from importlib.metadata import version
 from functools import partial
 
-import dill
 import jax
 import numpy as np
 import pandas as pd
-from bilby.core.utils import (
-    check_directory_exists_and_if_not_mkdir,
-    logger,
-    safe_file_dump,
-)
 from bilby.core.sampler.base_sampler import Sampler
 from bilby.core.result import Result
 from bilby.compat.jax import generic_bilby_likelihood_function
@@ -18,6 +11,10 @@ from bilby.compat.jax import generic_bilby_likelihood_function
 from .nest import run_nest
 from .smc import run_nssmc_anssmc
 from .utils import apply_boundary, generic_bilby_ln_prior
+
+os.environ["JAX_TRACEBACK_FILTERING"] = "off"
+os.environ["BILBY_ARRAY_API"] = "1"
+os.environ["SCIPY_ARRAY_API"] = "1"
 
 
 class Jaxted(Sampler):
@@ -116,14 +113,18 @@ class Jaxted(Sampler):
 
     sampler_name = "jaxted"
     sampling_seed_key = "rseed"
-    default_kwargs = dict(method="nest", nsteps=500, population_size=500, rseed=1, alpha=np.exp(-1))
+    default_kwargs = dict(
+        method="nest", nsteps=500, population_size=500, rseed=1, alpha=np.exp(-1)
+    )
 
     def run_sampler(self):
-        likelihood_fn = jax.vmap(partial(
-            generic_bilby_likelihood_function,
-            self.likelihood,
-            use_ratio=self.use_ratio
-        ))
+        likelihood_fn = jax.vmap(
+            partial(
+                generic_bilby_likelihood_function,
+                self.likelihood,
+                use_ratio=self.use_ratio,
+            )
+        )
         boundary_fn = partial(apply_boundary, priors=self.priors)
         ln_prior_fn = partial(generic_bilby_ln_prior, priors=self.priors)
         sample_fn = self.priors.sample
@@ -147,7 +148,6 @@ class Jaxted(Sampler):
         self.kwargs["method"] = method
         return self.result
 
-
     def create_result(self, samples, ln_z, ln_zerr):
         posterior_samples = pd.DataFrame(samples)
         return Result(
@@ -162,7 +162,6 @@ class Jaxted(Sampler):
             log_bayes_factor=float(ln_z) - self.likelihood.noise_log_likelihood(),
         )
 
-
     def _setup_pool(self):
         """
         In addition to the usual steps, we need to set the sampling kwargs on
@@ -171,4 +170,3 @@ class Jaxted(Sampler):
         """
         self.kwargs["npool"] = 1
         super()._setup_pool()
-

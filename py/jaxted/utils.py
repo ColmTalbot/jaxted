@@ -1,6 +1,7 @@
 """
 A collection of useful functions.
 """
+
 import typing
 from functools import partial
 
@@ -14,7 +15,7 @@ from jax_tqdm.pbar import build_tqdm
 __all__ = [
     "apply_boundary",
     "distance_insertion_index",
-    "generic_bilby_ln_prior"
+    "generic_bilby_ln_prior",
     "insertion_index_test",
     "likelihood_insertion_index",
     "logsubexp",
@@ -145,12 +146,16 @@ def insertion_index_test(result, kind="likelihood", ax=None):
             pvals.append(pval)
             label = f"{kind.title()}: $p_{{\\rm value }}={pval:.2f}, n_{{\\rm live}}={nlive}$"
             if ax is not None:
-                ax.hist(vals_ / nlive, bins=30, density=True, histtype="step", label=label)
+                ax.hist(
+                    vals_ / nlive, bins=30, density=True, histtype="step", label=label
+                )
         return pvals
     else:
         nlive = result["nlive"]
         pval = compute_pvalue(vals, result["nlive"])
-        label = f"{kind.title()}: $p_{{\\rm value }}={pval:.2f}, n_{{\\rm live}}={nlive}$"
+        label = (
+            f"{kind.title()}: $p_{{\\rm value }}={pval:.2f}, n_{{\\rm live}}={nlive}$"
+        )
         if ax is not None:
             ax.hist(vals / nlive, bins=30, density=True, histtype="step", label=label)
         return pval

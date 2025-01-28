@@ -5,7 +5,6 @@ A jax-friendly numpy-style random number generator.
 import numpy as np
 import jax
 import jax.numpy as jnp
-from scipy.stats import randint
 
 __all__ = [
     "JAXGenerator",
@@ -15,7 +14,6 @@ __all__ = [
 
 
 class JAXGenerator:
-
     def __init__(self, seed):
         self.key = seed
 
@@ -48,7 +46,9 @@ class JAXGenerator:
         if high is None:
             high = low
             low = 0
-        return jax.random.randint(self.key, minval=low, maxval=high, shape=size).squeeze()
+        return jax.random.randint(
+            self.key, minval=low, maxval=high, shape=size
+        ).squeeze()
 
     def beta(self, a, b, size=()):
         if isinstance(size, int):
@@ -110,4 +110,3 @@ def get_seed_sequence(rstate, nitems):
     elif isinstance(rstate, jax.Array):
         seeds = jax.random.split(rstate, nitems)
     return seeds
-

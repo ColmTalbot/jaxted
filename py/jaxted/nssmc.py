@@ -1,10 +1,3 @@
-import os
-import typing
-
-os.environ["JAX_TRACEBACK_FILTERING"] = "off"
-os.environ["BILBY_ARRAY_API"] = "1"
-os.environ["SCIPY_ARRAY_API"] = "1"
-
 from functools import partial
 
 import numpy as np
@@ -42,22 +35,32 @@ def step(
     rng_key, subkey_1, subkey_2, subkey_3 = jax.random.split(rng_key, 4)
     if ln_likelihoods.size == 1:
         key = list(proposal_points.keys())[0]
-        prop_idxs = jax.random.choice(subkey_1, len(proposal_points[key]), (2,), replace=False)
+        prop_idxs = jax.random.choice(
+            subkey_1, len(proposal_points[key]), (2,), replace=False
+        )
         deltas = jax.random.uniform(subkey_2)
     else:
-        prop_idxs = jax.random.choice(subkey_1, len(sequential_weights), (2, len(ln_likelihoods)), p=sequential_weights / sequential_weights.sum())
+        prop_idxs = jax.random.choice(
+            subkey_1,
+            len(sequential_weights),
+            (2, len(ln_likelihoods)),
+            p=sequential_weights / sequential_weights.sum(),
+        )
         deltas = jax.random.uniform(subkey_2, (len(ln_likelihoods),))
     proposed = dict()
 
     for key in samples:
-        proposed[key] = jax.numpy.atleast_1d(samples[key] + deltas * (
-            proposal_points[key][prop_idxs[0]]
-            - proposal_points[key][prop_idxs[1]]
-        ))
+        proposed[key] = jax.numpy.atleast_1d(
+            samples[key]
+            + deltas
+            * (proposal_points[key][prop_idxs[0]] - proposal_points[key][prop_idxs[1]])
+        )
 
     proposed = boundary_fn(proposed)
     proposed_ln_likelihoods = likelihood_fn(proposed)
-    proposed_priors = ln_prior_fn(proposed) + jax.numpy.log((proposed_ln_likelihoods > level))
+    proposed_priors = ln_prior_fn(proposed) + jax.numpy.log(
+        (proposed_ln_likelihoods > level)
+    )
     mh_ratio = proposed_priors - old_priors
     accept = mh_ratio > jax.numpy.log(jax.random.uniform(subkey_3, mh_ratio.shape))
     for key in samples:
@@ -66,11 +69,28 @@ def step(
     return rng_key, samples, ln_likelihoods, accept
 
 
-@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "nsteps"))
-def mutate(rng_key, samples, ln_likelihoods, proposal_points, level, likelihood_fn, ln_prior_fn, boundary_fn, nsteps=500):
+@partial(
+    jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "nsteps")
+)
+def mutate(
+    rng_key,
+    samples,
+    ln_likelihoods,
+    proposal_points,
+    level,
+    likelihood_fn,
+    ln_prior_fn,
+    boundary_fn,
+    nsteps=500,
+):
     total_accepted = jax.numpy.zeros(ln_likelihoods.shape)
     (rng_key, samples, _, ln_likelihoods, _), accepted = jax.lax.scan(
-        partial(new_step, likelihood_fn=likelihood_fn, ln_prior_fn=ln_prior_fn, boundary_fn=boundary_fn),
+        partial(
+            new_step,
+            likelihood_fn=likelihood_fn,
+            ln_prior_fn=ln_prior_fn,
+            boundary_fn=boundary_fn,
+        ),
         (rng_key, samples, proposal_points, ln_likelihoods, level),
         length=nsteps,
     )
@@ -82,7 +102,9 @@ def mutate(rng_key, samples, ln_likelihoods, proposal_points, level, likelihood_
 def new_step(state, x, likelihood_fn, ln_prior_fn, boundary_fn):
     _, _, proposal_points, _, level = state
     rng_key, samples, ln_likelihoods, accept = step(
-        *state, likelihood_fn=likelihood_fn, ln_prior_fn=ln_prior_fn, boundary_fn=boundary_fn
+        *state,
+        likelihood_fn=likelihood_fn,
+        ln_prior_fn=ln_prior_fn,
+        boundary_fn=boundary_fn,
     )
     return (rng_key, samples, proposal_points, ln_likelihoods, level), accept.mean()
-

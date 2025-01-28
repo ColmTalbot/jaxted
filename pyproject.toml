@@ -19,7 +19,7 @@ keywords = [
     "bayesian",
     "inference",
     "modeling",
-    "sequential monte carlo,
+    "sequential monte carlo",
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -33,7 +33,7 @@ dependencies = [
     "numpy >= 2",
     "scipy >= 1.14.0",
     "matplotlib",
-    "pandas"
+    "pandas",
     "jax >= 0.4.34",
     "h5py",
     "tqdm",
