@@ -114,7 +114,7 @@ class Jaxted(Sampler):
     sampler_name = "jaxted"
     sampling_seed_key = "rseed"
     default_kwargs = dict(
-        method="nest", nsteps=500, population_size=500, rseed=1, alpha=np.exp(-1)
+        method="nest", nsteps=500, nlive=500, rseed=1, alpha=np.exp(-1)
     )
 
     def run_sampler(self):

@@ -2,6 +2,8 @@ from functools import partial
 
 import numpy as np
 import jax
+import jax.numpy as jnp
+from jax.scipy.special import logsumexp
 from jax_tqdm import scan_tqdm
 
 from .nssmc import initialize, mutate
@@ -18,7 +20,7 @@ def anssmc(
     boundary_fn=None,
     alpha=np.exp(-1),
     max_iterations=100,
-    population_size=1000,
+    nlive=1000,
     rseed=10,
     verbose=False,
     nsteps=500,
@@ -35,28 +37,26 @@ def anssmc(
             _,
             iteration,
         ) = state
-        level = jax.numpy.quantile(ln_likelihoods, 1 - alpha, method="lower")
+        level = jnp.quantile(ln_likelihoods, 1 - alpha, method="lower")
         ln_posterior_weights = (
-            ln_normalization + ln_likelihoods + jax.numpy.log(ln_likelihoods > level)
+            ln_normalization + ln_likelihoods + jnp.log(ln_likelihoods > level)
         )
-        ln_remaining = jax.scipy.special.logsumexp(
-            ln_posterior_weights, b=1 / len(ln_likelihoods)
-        )
-        ln_remaining_squared = jax.scipy.special.logsumexp(
+        ln_remaining = logsumexp(ln_posterior_weights, b=1 / len(ln_likelihoods))
+        ln_remaining_squared = logsumexp(
             2 * ln_posterior_weights, b=1 / len(ln_likelihoods)
         )
-        ln_evidence = jax.numpy.logaddexp(ln_evidence, ln_remaining)
+        ln_evidence = jnp.logaddexp(ln_evidence, ln_remaining)
         condition = ln_remaining - ln_evidence
-        threshold = jax.numpy.log(1e-1)
+        threshold = jnp.log(1e-1)
         temp_variance = logsubexp(ln_remaining_squared, 2 * ln_remaining)
-        ln_variance = jax.numpy.logaddexp(ln_variance, temp_variance)
-        variance = jax.numpy.exp(ln_variance - 2 * ln_evidence)
+        ln_variance = jnp.logaddexp(ln_variance, temp_variance)
+        variance = jnp.exp(ln_variance - 2 * ln_evidence)
         if verbose:
             jax.debug.print(
                 "iteration: {:n}, condition {:.2f} > threshold {:.2f}, ln evidence: {:.2f} +/- {:.2f}",
                 iteration,
-                jax.numpy.exp(condition),
-                jax.numpy.exp(threshold),
+                jnp.exp(condition),
+                jnp.exp(threshold),
                 ln_evidence,
                 variance**0.5,
             )
@@ -64,7 +64,7 @@ def anssmc(
 
     def body_func(state):
         ln_likelihoods, levels, iteration = state[-3:]
-        level = jax.numpy.quantile(ln_likelihoods, 1 - alpha, method="lower")
+        level = jnp.quantile(ln_likelihoods, 1 - alpha, method="lower")
         levels = levels.at[iteration].set(level)
         iteration += 1
 
@@ -74,9 +74,9 @@ def anssmc(
         )
         return inner_state + (levels, iteration)
 
-    levels = jax.numpy.full(max_iterations, jax.numpy.nan)
+    levels = jnp.full(max_iterations, jnp.nan)
     iteration = 0
-    state = initialize(likelihood_fn, sample_prior, population_size, rseed) + (
+    state = initialize(likelihood_fn, sample_prior, nlive, rseed) + (
         levels,
         iteration,
     )
@@ -86,8 +86,8 @@ def anssmc(
         state,
     )
     _, _, ln_evidence, ln_variance, _, _, levels, _ = state
-    levels = levels[jax.numpy.isfinite(levels)]
-    variance = jax.numpy.exp(ln_variance - 2 * ln_evidence)
+    levels = levels[jnp.isfinite(levels)]
+    variance = jnp.exp(ln_variance - 2 * ln_evidence)
     ln_evidence_err = variance**0.5
 
     return ln_evidence, ln_evidence_err, levels
@@ -100,7 +100,7 @@ def nssmc(
     *,
     boundary_fn=None,
     levels,
-    population_size=1000,
+    nlive=1000,
     rseed=10,
     nsteps=500,
 ):
@@ -111,37 +111,29 @@ def nssmc(
             *state, level, likelihood_fn, ln_prior_fn, boundary_fn, nsteps=nsteps
         )
 
-    state = initialize(likelihood_fn, sample_prior, population_size, rseed)
-    state, output = jax.lax.scan(body_func, state, jax.numpy.arange(len(levels)))
+    state = initialize(likelihood_fn, sample_prior, nlive, rseed)
+    state, output = jax.lax.scan(body_func, state, jnp.arange(len(levels)))
     rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = state
 
     output = {key: output[key].flatten() for key in output}
 
     ln_post_weights = ln_normalization + ln_likelihoods
     for key in samples:
-        output[key] = jax.numpy.concatenate([output[key], samples[key]])
-    output["ln_weights"] = jax.numpy.concatenate(
-        [output["ln_weights"], ln_post_weights]
-    )
-    output["ln_likelihood"] = jax.numpy.concatenate(
-        [output["ln_likelihood"], ln_likelihoods]
-    )
+        output[key] = jnp.concatenate([output[key], samples[key]])
+    output["ln_weights"] = jnp.concatenate([output["ln_weights"], ln_post_weights])
+    output["ln_likelihood"] = jnp.concatenate([output["ln_likelihood"], ln_likelihoods])
 
     ln_weights = output["ln_weights"]
-    ln_weights -= jax.numpy.max(ln_weights)
-    keep = ln_weights > jax.numpy.log(jax.random.uniform(rng_key, ln_weights.shape))
+    ln_weights -= jnp.max(ln_weights)
+    keep = ln_weights > jnp.log(jax.random.uniform(rng_key, ln_weights.shape))
     output = {key: values[keep] for key, values in output.items()}
 
-    temp_evidence = jax.scipy.special.logsumexp(
-        ln_post_weights, b=1 / len(ln_likelihoods)
-    )
-    temp_evidence_squared = jax.scipy.special.logsumexp(
-        2 * ln_post_weights, b=1 / len(ln_likelihoods)
-    )
-    ln_evidence = jax.numpy.logaddexp(ln_evidence, temp_evidence)
+    temp_evidence = logsumexp(ln_post_weights, b=1 / len(ln_likelihoods))
+    temp_evidence_squared = logsumexp(2 * ln_post_weights, b=1 / len(ln_likelihoods))
+    ln_evidence = jnp.logaddexp(ln_evidence, temp_evidence)
     temp_variance = logsubexp(temp_evidence_squared, 2 * temp_evidence)
-    ln_variance = jax.numpy.logaddexp(ln_variance, temp_variance)
-    variance = jax.numpy.exp(ln_variance - 2 * ln_evidence)
+    ln_variance = jnp.logaddexp(ln_variance, temp_variance)
+    variance = jnp.exp(ln_variance - 2 * ln_evidence)
     ln_evidence_err = variance**0.5
 
     return ln_evidence, ln_evidence_err, output
@@ -165,18 +157,14 @@ def smc_step(
 ):
     sequential_weights = ln_likelihoods > level
     ln_post_weights = (
-        ln_normalization + ln_likelihoods + jax.numpy.log(ln_likelihoods <= level)
+        ln_normalization + ln_likelihoods + jnp.log(ln_likelihoods <= level)
     )
-    temp_evidence = jax.scipy.special.logsumexp(
-        ln_post_weights, b=1 / len(ln_likelihoods)
-    )
-    temp_evidence_squared = jax.scipy.special.logsumexp(
-        2 * ln_post_weights, b=1 / len(ln_likelihoods)
-    )
-    ln_evidence = jax.numpy.logaddexp(ln_evidence, temp_evidence)
+    temp_evidence = logsumexp(ln_post_weights, b=1 / len(ln_likelihoods))
+    temp_evidence_squared = logsumexp(2 * ln_post_weights, b=1 / len(ln_likelihoods))
+    ln_evidence = jnp.logaddexp(ln_evidence, temp_evidence)
     temp_variance = logsubexp(temp_evidence_squared, 2 * temp_evidence)
-    ln_variance = jax.numpy.logaddexp(ln_variance, temp_variance)
-    ln_normalization += jax.numpy.log(sequential_weights.mean())
+    ln_variance = jnp.logaddexp(ln_variance, temp_variance)
+    ln_normalization += jnp.log(sequential_weights.mean())
     output = {key: samples[key].copy() for key in samples}
     output["ln_likelihood"] = ln_likelihoods
     output["ln_weights"] = ln_post_weights
@@ -232,7 +220,7 @@ def run_nssmc_anssmc(
     boundary_fn,
     *,
     verbose=False,
-    population_size=1000,
+    nlive=1000,
     nsteps=400,
     rseed=1,
     alpha=np.exp(-1),
@@ -244,7 +232,7 @@ def run_nssmc_anssmc(
         ln_prior_fn,
         sample_prior,
         boundary_fn=boundary_fn,
-        population_size=population_size // 10,
+        nlive=nlive // 10,
         nsteps=nsteps,
         rseed=rseed,
         alpha=alpha,
@@ -257,7 +245,7 @@ def run_nssmc_anssmc(
         sample_prior,
         boundary_fn=boundary_fn,
         levels=levels,
-        population_size=population_size,
+        nlive=nlive,
         nsteps=nsteps,
         rseed=rseed,
     )

@@ -1,6 +1,8 @@
 from functools import partial
 
 import jax
+import jax.numpy as jnp
+from jax.scipy.special import logsumexp
 from jax_tqdm import scan_tqdm
 
 from .utils import logsubexp
@@ -22,12 +24,12 @@ def run_nest(
     *,
     boundary_fn=None,
     sub_iterations=10,
-    population_size=1000,
+    nlive=1000,
     nsteps=500,
     rseed=20,
     dlogz=0.1,
 ):
-    state = initialize(likelihood_fn, sample_prior, population_size, rseed)
+    state = initialize(likelihood_fn, sample_prior, nlive, rseed)
 
     @scan_tqdm(sub_iterations, print_rate=1)
     def body_func(state, level):
@@ -39,15 +41,9 @@ def run_nest(
             nsteps=nsteps,
         )
 
-    state, output = jax.lax.scan(
-        body_func,
-        state,
-        jax.numpy.arange(sub_iterations),
-    )
+    state, output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
     rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = state
-    dlogz_ = jax.numpy.log1p(
-        ln_normalization + jax.numpy.max(ln_likelihoods) - ln_evidence
-    )
+    dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
     output = {key: output[key].flatten() for key in output}
     while dlogz_ > dlogz:
         print(
@@ -56,42 +52,33 @@ def run_nest(
         state, new_output = jax.lax.scan(
             body_func,
             state,
-            jax.numpy.arange(sub_iterations),
+            jnp.arange(sub_iterations),
         )
         rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = (
             state
         )
-        dlogz_ = jax.numpy.log1p(
-            ln_normalization + jax.numpy.max(ln_likelihoods) - ln_evidence
-        )
+        dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
         output = {
-            key: jax.numpy.concatenate([output[key], new_output[key].flatten()])
+            key: jnp.concatenate([output[key], new_output[key].flatten()])
             for key in output
         }
 
-    ln_post_weights = ln_normalization + ln_likelihoods - jax.numpy.log(population_size)
-    ln_evidence = jax.numpy.logaddexp(
-        ln_evidence, jax.scipy.special.logsumexp(ln_post_weights)
-    )
-    ln_variance = jax.numpy.logaddexp(
-        ln_variance, jax.scipy.special.logsumexp(2 * ln_post_weights)
-    )
-    variance = jax.numpy.exp(ln_variance - 2 * ln_evidence)
-    ln_evidence_err = variance**0.5
+    ln_post_weights = ln_normalization + ln_likelihoods - jnp.log(nlive)
 
-    output["ln_weights"] = jax.numpy.concatenate(
-        [output["ln_weights"], ln_post_weights]
-    )
-    output["ln_likelihood"] = jax.numpy.concatenate(
-        [output["ln_likelihood"], ln_likelihoods]
-    )
+    output["ln_weights"] = jnp.concatenate([output["ln_weights"], ln_post_weights])
+    output["ln_likelihood"] = jnp.concatenate([output["ln_likelihood"], ln_likelihoods])
     output = {key: output[key].flatten() for key in output}
     for key in samples:
-        output[key] = jax.numpy.concatenate([output[key], samples[key]])
+        output[key] = jnp.concatenate([output[key], samples[key]])
 
     ln_weights = output["ln_weights"]
-    ln_weights -= jax.numpy.max(ln_weights)
-    keep = ln_weights > jax.numpy.log(jax.random.uniform(rng_key, ln_weights.shape))
+    ln_evidence = logsumexp(ln_weights)
+    ln_variance = logsumexp(2 * ln_weights)
+    variance = jnp.exp(ln_variance - 2 * ln_evidence)
+    ln_evidence_err = variance**0.5
+
+    ln_weights -= jnp.max(ln_weights)
+    keep = ln_weights > jnp.log(jax.random.uniform(rng_key, ln_weights.shape))
     output = {key: values[keep] for key, values in output.items()}
 
     return ln_evidence, ln_evidence_err, output
@@ -101,21 +88,21 @@ def null_func(args):
     state, _ = args
     _, _, _, _, samples, _ = state
     output = {key: samples[key][0] for key in samples}
-    output["ln_likelihood"] = jax.numpy.nan
-    output["ln_weights"] = -jax.numpy.inf
+    output["ln_likelihood"] = jnp.nan
+    output["ln_weights"] = -jnp.inf
     return state, output
 
 
 def replace_func(args):
     state, proposed = args
     rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = state
-    level = jax.numpy.min(ln_likelihoods)
-    replace = jax.numpy.argmin(ln_likelihoods)
+    level = jnp.min(ln_likelihoods)
+    replace = jnp.argmin(ln_likelihoods)
 
     ln_compression = -1 / len(ln_likelihoods)
     ln_post_weight = ln_normalization + level + logsubexp(0, ln_compression)
-    ln_evidence = jax.numpy.logaddexp(ln_evidence, ln_post_weight)
-    ln_variance = jax.numpy.logaddexp(2 * ln_post_weight, ln_variance)
+    ln_evidence = jnp.logaddexp(ln_evidence, ln_post_weight)
+    ln_variance = jnp.logaddexp(2 * ln_post_weight, ln_variance)
     ln_normalization += ln_compression
 
     output = {key: samples[key][replace] for key in samples}
@@ -141,7 +128,7 @@ def replace_func(args):
 def digest(state, proposed):
     ln_l = proposed["ln_likelihood"]
     _, _, _, _, _, ln_likelihoods = state
-    level = jax.numpy.min(ln_likelihoods)
+    level = jnp.min(ln_likelihoods)
     return jax.lax.cond(ln_l > level, replace_func, null_func, (state, proposed))
 
 
@@ -151,7 +138,7 @@ def digest(state, proposed):
 def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, nsteps):
     rng_key, _, _, _, samples, ln_likelihoods = state
     proposal_points = {key: samples[key].copy() for key in samples}
-    level = jax.numpy.min(ln_likelihoods)
+    level = jnp.min(ln_likelihoods)
     rng_key, new_samples, new_ln_likelihoods, total_accepted = mutate(
         rng_key,
         samples,

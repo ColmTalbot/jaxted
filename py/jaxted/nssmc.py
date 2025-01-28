@@ -2,13 +2,14 @@ from functools import partial
 
 import numpy as np
 import jax
+import jax.numpy as jnp
 
 __all__ = ["initialize", "step", "mutate", "new_step"]
 
 
-def initialize(likelihood_fn, sample_prior, population_size, rseed):
+def initialize(likelihood_fn, sample_prior, nlive, rseed):
     rng_key = jax.random.PRNGKey(rseed)
-    samples = sample_prior(population_size)
+    samples = sample_prior(nlive)
     ln_likelihoods = likelihood_fn(samples)
 
     ln_normalization = 0.0
@@ -50,7 +51,7 @@ def step(
     proposed = dict()
 
     for key in samples:
-        proposed[key] = jax.numpy.atleast_1d(
+        proposed[key] = jnp.atleast_1d(
             samples[key]
             + deltas
             * (proposal_points[key][prop_idxs[0]] - proposal_points[key][prop_idxs[1]])
@@ -58,14 +59,12 @@ def step(
 
     proposed = boundary_fn(proposed)
     proposed_ln_likelihoods = likelihood_fn(proposed)
-    proposed_priors = ln_prior_fn(proposed) + jax.numpy.log(
-        (proposed_ln_likelihoods > level)
-    )
+    proposed_priors = ln_prior_fn(proposed) + jnp.log((proposed_ln_likelihoods > level))
     mh_ratio = proposed_priors - old_priors
-    accept = mh_ratio > jax.numpy.log(jax.random.uniform(subkey_3, mh_ratio.shape))
+    accept = mh_ratio > jnp.log(jax.random.uniform(subkey_3, mh_ratio.shape))
     for key in samples:
-        samples[key] = jax.numpy.where(accept, proposed[key], samples[key])
-    ln_likelihoods = jax.numpy.where(accept, proposed_ln_likelihoods, ln_likelihoods)
+        samples[key] = jnp.where(accept, proposed[key], samples[key])
+    ln_likelihoods = jnp.where(accept, proposed_ln_likelihoods, ln_likelihoods)
     return rng_key, samples, ln_likelihoods, accept
 
 
@@ -83,7 +82,7 @@ def mutate(
     boundary_fn,
     nsteps=500,
 ):
-    total_accepted = jax.numpy.zeros(ln_likelihoods.shape)
+    total_accepted = jnp.zeros(ln_likelihoods.shape)
     (rng_key, samples, _, ln_likelihoods, _), accepted = jax.lax.scan(
         partial(
             new_step,

@@ -7,8 +7,8 @@ from functools import partial
 
 import numpy as np
 import jax
+import jax.numpy as jnp
 from scipy.stats import randint, ks_1samp
-from scipy._lib._array_api import array_namespace
 from jax_tqdm import PBar
 from jax_tqdm.pbar import build_tqdm
 
@@ -25,12 +25,12 @@ __all__ = [
 
 @jax.jit
 def logsubexp(aa, bb):
-    return aa + jax.numpy.log(1 - jax.numpy.exp(bb - aa))
+    return aa + jnp.log(1 - jnp.exp(bb - aa))
 
 
 @partial(jax.jit, static_argnames=("priors",))
 def generic_bilby_ln_prior(samples, priors):
-    return jax.numpy.log(priors.prob(samples, axis=0))
+    return jnp.log(priors.prob(samples, axis=0))
 
 
 @partial(jax.jit, static_argnames=("priors",))
@@ -166,11 +166,10 @@ def distance_insertion_index(live_u, start, point):
     """
     Compute the distance insertion index as defined in XXX
     """
-    xp = array_namespace(point)
-    norms = xp.std(live_u, axis=0)
-    distance = xp.linalg.norm((point - start) / norms)
-    all_distances = xp.array([xp.linalg.norm((start - u) / norms) for u in live_u])
-    return xp.sum(all_distances < distance)
+    norms = jnp.std(live_u, axis=0)
+    distance = jnp.linalg.norm((point - start) / norms)
+    all_distances = jnp.array([jnp.linalg.norm((start - u) / norms) for u in live_u])
+    return jnp.sum(all_distances < distance)
 
 
 @jax.jit
@@ -178,5 +177,4 @@ def likelihood_insertion_index(live_logl, logl):
     """
     Compute the likelihood insertion index as defined in arxiv:2006.03371
     """
-    xp = array_namespace(live_logl)
-    return xp.sum(xp.array(live_logl) < logl)
+    return jnp.sum(jnp.array(live_logl) < logl)
