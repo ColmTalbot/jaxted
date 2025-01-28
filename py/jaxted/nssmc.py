@@ -30,41 +30,32 @@ def step(
     ln_prior_fn,
     boundary_fn,
 ):
-    sequential_weights = ln_likelihoods > level
-
+    valid_points = ln_likelihoods > level
     old_priors = ln_prior_fn(samples)
+
     rng_key, subkey_1, subkey_2, subkey_3 = jax.random.split(rng_key, 4)
-    if ln_likelihoods.size == 1:
-        key = list(proposal_points.keys())[0]
-        prop_idxs = jax.random.choice(
-            subkey_1, len(proposal_points[key]), (2,), replace=False
-        )
-        deltas = jax.random.uniform(subkey_2)
-    else:
-        prop_idxs = jax.random.choice(
-            subkey_1,
-            len(sequential_weights),
-            (2, len(ln_likelihoods)),
-            p=sequential_weights / sequential_weights.sum(),
-        )
-        deltas = jax.random.uniform(subkey_2, (len(ln_likelihoods),))
+    prop_idxs = jax.random.choice(
+        subkey_1,
+        len(valid_points),
+        (2, len(ln_likelihoods)),
+        p=valid_points / valid_points.sum(),
+    )
+    deltas = jax.random.uniform(subkey_2, (len(ln_likelihoods),))
+
     proposed = dict()
-
     for key in samples:
-        proposed[key] = jnp.atleast_1d(
-            samples[key]
-            + deltas
-            * (proposal_points[key][prop_idxs[0]] - proposal_points[key][prop_idxs[1]])
-        )
-
+        diffs = proposal_points[key][prop_idxs[0]] - proposal_points[key][prop_idxs[1]]
+        proposed[key] = samples[key] + deltas * diffs
     proposed = boundary_fn(proposed)
+
     proposed_ln_likelihoods = likelihood_fn(proposed)
-    proposed_priors = ln_prior_fn(proposed) + jnp.log((proposed_ln_likelihoods > level))
+    proposed_priors = ln_prior_fn(proposed) + jnp.log(proposed_ln_likelihoods > level)
     mh_ratio = proposed_priors - old_priors
     accept = mh_ratio > jnp.log(jax.random.uniform(subkey_3, mh_ratio.shape))
     for key in samples:
         samples[key] = jnp.where(accept, proposed[key], samples[key])
     ln_likelihoods = jnp.where(accept, proposed_ln_likelihoods, ln_likelihoods)
+
     return rng_key, samples, ln_likelihoods, accept
 
 
