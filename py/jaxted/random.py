@@ -6,11 +6,7 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-__all__ = [
-    "JAXGenerator",
-    "get_random_generator",
-    "get_seed_sequence",
-]
+__all__ = ["JAXGenerator", "get_random_generator", "get_seed_sequence"]
 
 
 class JAXGenerator:

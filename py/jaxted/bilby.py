@@ -16,6 +16,8 @@ os.environ["JAX_TRACEBACK_FILTERING"] = "off"
 os.environ["BILBY_ARRAY_API"] = "1"
 os.environ["SCIPY_ARRAY_API"] = "1"
 
+__all__ = ["Jaxted"]
+
 
 class Jaxted(Sampler):
     """
