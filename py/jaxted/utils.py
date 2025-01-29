@@ -152,6 +152,7 @@ def insertion_index_test(vals, nlive, label="likelihood", ax=None):
     """
     Compute the p-value comparing the distribution of insertion indices with
     the discrete uniform distribution as described in arxiv:2006.03371.
+
     Parameters
     ----------
     vals: array-like
@@ -160,6 +161,7 @@ def insertion_index_test(vals, nlive, label="likelihood", ax=None):
         The label to use in plotting
     ax: matplotlib.Axis
         If passed, the insertion indices will be histogramed on the axis.
+
     Returns
     -------
     pval: float, array-like
