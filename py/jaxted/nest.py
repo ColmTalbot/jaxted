@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from jax.scipy.special import logsumexp
 from jax_tqdm import scan_tqdm
 
-from .utils import logsubexp
+from .utils import insertion_index_test, logsubexp, likelihood_insertion_index
 from .nssmc import initialize, mutate
 
 __all__ = [
@@ -60,6 +60,10 @@ def run_nest(
     rng_key, ln_normalization, _, _, samples, ln_likelihoods = state
     ln_post_weights = ln_normalization + ln_likelihoods - jnp.log(nlive)
 
+    insertion_indices = output.pop("insertion_index")
+    pvalue = insertion_index_test(insertion_indices, nlive)
+    print(f"Likelihood insertion test p-value: {pvalue:.4f}")
+
     output["ln_weights"] = jnp.concatenate([output["ln_weights"], ln_post_weights])
     output["ln_likelihood"] = jnp.concatenate([output["ln_likelihood"], ln_likelihoods])
     for key in samples:
@@ -84,6 +88,7 @@ def null_func(args):
     output = {key: samples[key][0] for key in samples}
     output["ln_likelihood"] = jnp.nan
     output["ln_weights"] = -jnp.inf
+    output["insertion_index"] = -1
     return state, output
 
 
@@ -106,6 +111,7 @@ def replace_func(args):
     ln_l = proposed.pop("ln_likelihood")
     for key in samples:
         samples[key] = samples[key].at[replace].set(proposed[key])
+    output["insertion_index"] = likelihood_insertion_index(ln_likelihoods, ln_l)
     ln_likelihoods = ln_likelihoods.at[replace].set(ln_l)
 
     state = (
