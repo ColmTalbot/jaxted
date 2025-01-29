@@ -46,7 +46,8 @@ def step(
     for key in samples:
         diffs = proposal_points[key][prop_idxs[0]] - proposal_points[key][prop_idxs[1]]
         proposed[key] = samples[key] + deltas * diffs
-    proposed = boundary_fn(proposed)
+    if boundary_fn is not None:
+        proposed = boundary_fn(proposed)
 
     proposed_ln_likelihoods = likelihood_fn(proposed)
     proposed_priors = ln_prior_fn(proposed) + jnp.log(proposed_ln_likelihoods > level)
