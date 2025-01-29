@@ -25,6 +25,50 @@ def anssmc(
     verbose=False,
     nsteps=500,
 ):
+    """
+    Run the adaptive nested sampling via sequential Monte Carlo algorithm as
+    described in algorithm 3 of [1]_.
+
+    Parameters
+    ==========
+    likelihood_fn: callable
+        A vectorized likelihood function that takes as input a dictionary of
+        values for the parameters and returns the log-likelihood at each point.
+    ln_prior_fn: callable
+        A function that takes a dictionary of values for the parameters and
+        returns the log-prior at each point.
+    sample_prior: callable
+        A function that samples from the prior for initialization.
+    boundary_fn: callable, optional
+        A function that takes a dictionary of values for the parameters and
+        performs any appropriate boundary conditions, e.g., periodicity.
+        If None, no boundary is applied.
+    alpha: float, default 1 / e
+        The prior compression fraction at each iteration
+    max_iterations: int, default 100
+        The maximum number of iterations to run.
+    nlive: int, default 1000
+        The number of live points to use.
+    rseed: int, default 10
+        The random seed to use.
+    verbose: bool, default False
+        Whether to print progress messages.
+    nsteps: int, default 500
+        The number of MCMC iterations to run during each mutation stage.
+
+    Returns
+    =======
+    ln_evidence: float
+        The log-evidence.
+    ln_evidence_err: float
+        The error on the log-evidence.
+    levels: array-like
+        The levels used in each iteration.
+
+    References
+    ==========
+    [1]_ https://arxiv.org/abs/1805.03924
+    """
     @while_tqdm()
     def cond_func(state):
         (
@@ -104,6 +148,46 @@ def nssmc(
     rseed=10,
     nsteps=500,
 ):
+    """
+    Run the nested sampling via sequential Monte Carlo algorithm as described
+    in algorithm 2 of [1]_.
+
+    Parameters
+    ==========
+    likelihood_fn: callable
+        A vectorized likelihood function that takes as input a dictionary of
+        values for the parameters and returns the log-likelihood at each point.
+    ln_prior_fn: callable
+        A function that takes a dictionary of values for the parameters and
+        returns the log-prior at each point.
+    sample_prior: callable
+        A function that samples from the prior for initialization.
+    boundary_fn: callable, optional
+        A function that takes a dictionary of values for the parameters and
+        performs any appropriate boundary conditions, e.g., periodicity.
+    levels: array-like
+        The sequence of log-likelihood levels to use.
+    nlive: int, default 1000
+        The number of live points to use.
+    rseed: int, default 10
+        The random seed to use.
+    nsteps: int, default 500
+        The number of MCMC iterations to run during each mutation stage.
+
+    Returns
+    =======
+    ln_evidence: float
+        The log-evidence.
+    ln_evidence_err: float
+        The error on the log-evidence.
+    output: dict[str, array-like]
+        The output of the sampler, containing the posterior samples and other
+        information.
+
+    References
+    ==========
+    [1]_ https://arxiv.org/abs/1805.03924
+    """
     @scan_tqdm(len(levels), print_rate=1)
     def body_func(state, idx):
         level = levels[idx]
@@ -155,6 +239,53 @@ def smc_step(
     boundary_fn,
     nsteps=500,
 ):
+    """
+    Perform a single sequential Monte Carlo step.
+
+    This involves the following steps:
+
+    - identify the particles that are below the threshold and remove them
+      from the live population.
+    - update the run state, evidence, etc., using the removed particles.
+    - resample the particles above the threshold.
+    - mutate the particles using MCMC.
+
+    Parameters
+    ==========
+    rng_key: jax.random.PRNGKey
+        The random key to use for sampling.
+    ln_normalization: float
+        The current value of the log-normalization.
+    ln_evidence: float
+        The current value of the log-evidence.
+    ln_variance: float
+        The current value of the log-variance.
+    samples: dict[str, array-like]
+        A dictionary of parameter samples.
+    ln_likelihoods: array-like
+        The log-likelihoods of the samples.
+    level: float
+        The current log-likelihood threshold.
+    likelihood_fn: callable
+        A vectorized likelihood function that takes as input a dictionary of
+        values for the parameters and returns the log-likelihood at each point.
+    ln_prior_fn: callable
+        A function that takes a dictionary of values for the parameters and
+        returns the log-prior at each point.
+    boundary_fn: callable, optional
+        A function that takes a dictionary of values for the parameters and
+        performs any appropriate boundary conditions, e.g., periodicity.
+    nsteps: int, default 500
+        The number of MCMC iterations to run during each mutation stage.
+
+    Returns
+    =======
+    state: tuple
+        The updated state after performing the SMC step.
+    output: dict[str, array-like]
+        A dictionary containing information about the step, including the
+        removed samples and their log-likelihoods.
+    """
     sequential_weights = ln_likelihoods > level
     ln_post_weights = (
         ln_normalization + ln_likelihoods + jnp.log(ln_likelihoods <= level)
@@ -175,7 +306,7 @@ def smc_step(
     # mutate the particles
     # run a short MCMC over the constrained prior to update the samples
     proposal_points = {key: samples[key].copy() for key in samples}
-    rng_key, samples, ln_likelihoods, total_accepted = mutate(
+    rng_key, samples, ln_likelihoods, _ = mutate(
         rng_key,
         samples,
         ln_likelihoods,
@@ -217,14 +348,59 @@ def run_nssmc_anssmc(
     likelihood_fn,
     ln_prior_fn,
     sample_prior,
-    boundary_fn,
     *,
+    boundary_fn=None,
     verbose=False,
     nlive=1000,
     nsteps=400,
     rseed=1,
     alpha=np.exp(-1),
 ):
+    """
+    Run the full adaptive nested sampling via sequential Monte Carlo algorithm
+    as proposed in [1]_. This involves first running the adaptive nested
+    sampling algorithm, and then using the levels found to run the
+    regular nested sampling via sequential Monte Carlo algorithm.
+
+    Parameters
+    ==========
+    likelihood_fn: callable
+        A vectorized likelihood function that takes as input a dictionary of
+        values for the parameters and returns the log-likelihood at each point.
+    ln_prior_fn: callable
+        A function that takes a dictionary of values for the parameters and
+        returns the log-prior at each point.
+    sample_prior: callable
+        A function that samples from the prior for initialization.
+    boundary_fn: callable, optional
+        A function that takes a dictionary of values for the parameters and
+        performs any appropriate boundary conditions, e.g., periodicity.
+        If None, no boundary is applied.
+    alpha: float, default 1 / e
+        The prior compression fraction at each iteration
+    nlive: int, default 1000
+        The number of live points to use.
+    rseed: int, default 1
+        The random seed to use.
+    verbose: bool, default False
+        Whether to print progress messages.
+    nsteps: int, default 400
+        The number of MCMC iterations to run during each mutation stage.
+
+    Returns
+    =======
+    ln_evidence: float
+        The log-evidence.
+    ln_evidence_err: float
+        The error on the log-evidence.
+    output: dict[str, array-like]
+        The output of the sampler, containing the posterior samples and other
+        information.
+
+    References
+    ==========
+    [1]_ https://arxiv.org/abs/1805.03924
+    """
     if verbose:
         print("Starting NS-SMC, there may be some compilation delay")
     _, _, levels = anssmc(
