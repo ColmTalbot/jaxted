@@ -25,16 +25,64 @@ __all__ = [
 
 @jax.jit
 def logsubexp(aa, bb):
+    r"""
+    .. math:
+
+        \log\left( e^{a} - e^{b} \right)
+
+    Parameters
+    ==========
+    aa: array-like
+    bb: array-like
+
+    Returns
+    =======
+    array-like
+
+    Notes
+    =====
+    This function does not include safety checks that :math:`a > b`.
+    """
     return aa + jnp.log(1 - jnp.exp(bb - aa))
 
 
 @partial(jax.jit, static_argnames=("priors",))
 def generic_bilby_ln_prior(samples, priors):
+    """
+    Wrapper to function to evaluate the log prior density from a :code:`Bilby`
+    prior dictionary.
+
+    Parameters
+    ==========
+    samples: dict[str, array-like]
+    priors: bilby.core.prior.PriorDict
+
+    Returns
+    =======
+    array-like
+    """
     return jnp.log(priors.prob(samples, axis=0))
 
 
 @partial(jax.jit, static_argnames=("priors",))
 def apply_boundary(samples, priors):
+    """
+    Apply periodic boundary conditions to the input samples using the provided
+    prior dictionary.
+
+    Parameters
+    ==========
+    samples: dict[str, array-like]
+    priors: bilby.core.prior.PriorDict
+
+    Returns
+    =======
+    dict[str, array-like]
+
+    Notes
+    =====
+    This modifies the input samples in place.
+    """
     for key in samples:
         if priors[key].boundary == "periodic":
             samples[key] -= priors[key].minimum
