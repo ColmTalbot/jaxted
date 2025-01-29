@@ -19,18 +19,13 @@ os.environ["SCIPY_ARRAY_API"] = "1"
 
 class Jaxted(Sampler):
     """
-    bilby wrapper of `dynesty.NestedSampler`
-    (https://dynesty.readthedocs.io/en/latest/)
-
-    All positional and keyword arguments (i.e., the args and kwargs) passed to
-    `run_sampler` will be propagated to `dynesty.NestedSampler`, see
-    documentation for that class for further help. Under Other Parameters below,
-    we list commonly used kwargs and the Bilby defaults.
+    bilby wrapper of :code:`JAXted`
+    (https://jaxted.readthedocs.io/en/latest/)
 
     Parameters
     ==========
-    likelihood: likelihood.Likelihood
-        A  object with a log_l method
+    likelihood: bilby.core.likelihood.Likelihood
+        A Bilby likelihood object
     priors: bilby.core.prior.PriorDict, dict
         Priors to be used in the search.
         This has attributes for each parameter to be sampled.
@@ -41,74 +36,19 @@ class Jaxted(Sampler):
     use_ratio: bool, optional
         Switch to set whether or not you want to use the log-likelihood ratio
         or just the log-likelihood
-    plot: bool, optional
-        Switch to set whether or not you want to create traceplots
     skip_import_verification: bool
         Skips the check if the sampler is installed if true. This is
         only advisable for testing environments
-    print_method: str ('tqdm')
-        The method to use for printing. The options are:
-        - 'tqdm': use a `tqdm` `pbar`, this is the default.
-        - 'interval-$TIME': print to `stdout` every `$TIME` seconds,
-          e.g., 'interval-10' prints every ten seconds, this does not print every iteration
-        - else: print to `stdout` at every iteration
-    exit_code: int
-        The code which the same exits on if it hasn't finished sampling
-    check_point: bool,
-        If true, use check pointing.
-    check_point_plot: bool,
-        If true, generate a trace plot along with the check-point
-    check_point_delta_t: float (600)
-        The minimum checkpoint period (in seconds). Should the run be
-        interrupted, it can be resumed from the last checkpoint.
-    n_check_point: int, optional (None)
-        The number of steps to take before checking whether to check_point.
-    resume: bool
-        If true, resume run from checkpoint (if available)
-    maxmcmc: int (5000)
-        The maximum length of the MCMC exploration to find a new point
-    nact: int (2)
-        The number of autocorrelation lengths for MCMC exploration.
-        For use with the :code:`act-walk` and :code:`rwalk` sample methods.
-        See the dynesty guide in the Bilby docs for more details.
-    naccept: int (60)
-        The expected number of accepted steps for MCMC exploration when using
-        the :code:`acceptance-walk` sampling method.
-    rejection_sample_posterior: bool (True)
-        Whether to form the posterior by rejection sampling the nested samples.
-        If False, the nested samples are resampled with repetition. This was
-        the default behaviour in :code:`Bilby<=1.4.1` and leads to
-        non-independent samples being produced.
-    proposals: iterable (None)
-        The proposal methods to use during MCMC. This can be some combination
-        of :code:`"diff", "volumetric"`. See the dynesty guide in the Bilby docs
-        for more details. default=:code:`["diff"]`.
-    rstate: numpy.random.Generator (None)
-        Instance of a numpy random generator for generating random numbers.
-        Also see :code:`seed` in 'Other Parameters'.
-
-    Other Parameters
-    ================
-    nlive: int, (1000)
-        The number of live points, note this can also equivalently be given as
-        one of [nlive, nlives, n_live_points, npoints]
-    bound: {'live', 'live-multi', 'none', 'single', 'multi', 'balls', 'cubes'}, ('live')
-        Method used to select new points
-    sample: {'act-walk', 'acceptance-walk', 'unif', 'rwalk', 'slice',
-             'rslice', 'hslice', 'rwalk_dynesty'}, ('act-walk')
-        Method used to sample uniformly within the likelihood constraints,
-        conditioned on the provided bounds
-    walks: int (100)
-        Number of walks taken if using the dynesty implemented sample methods
-        Note that the default `walks` in dynesty itself is 25, although using
-        `ndim * 10` can be a reasonable rule of thumb for new problems.
-        For :code:`sample="act-walk"` and :code:`sample="rwalk"` this parameter
-        has no impact on the sampling.
-    dlogz: float, (0.1)
-        Stopping criteria
-    seed: int (None)
-        Use to seed the random number generator if :code:`rstate` is not
-        specified.
+    method: str
+        The sampling method, should be one of :code:`nest` or :code:`smc`
+    nsteps: int
+        The number of steps to take in each ensemble MCMC chain
+    nlive: int
+        The size of the live population
+    rseed: int
+        The random seed
+    alpha: float
+        The compression fraction for the :code:`smc` method
     """
 
     sampler_name = "jaxted"
@@ -116,6 +56,9 @@ class Jaxted(Sampler):
     default_kwargs = dict(
         method="nest", nsteps=500, nlive=500, rseed=1, alpha=np.exp(-1)
     )
+
+    def _time_likelihood(self, n_evaluations=100):
+        return np.nan
 
     def run_sampler(self):
         likelihood_fn = jax.vmap(
@@ -160,6 +103,10 @@ class Jaxted(Sampler):
             log_noise_evidence=self.likelihood.noise_log_likelihood(),
             log_evidence_err=ln_zerr,
             log_bayes_factor=float(ln_z) - self.likelihood.noise_log_likelihood(),
+            injection_parameters={
+                key: float(value) for key, value in self.injection_parameters.items()
+            },
+            meta_data=self.meta_data,
         )
 
     def _setup_pool(self):
