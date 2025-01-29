@@ -105,9 +105,7 @@ class Jaxted(Sampler):
             log_noise_evidence=self.likelihood.noise_log_likelihood(),
             log_evidence_err=ln_zerr,
             log_bayes_factor=float(ln_z) - self.likelihood.noise_log_likelihood(),
-            injection_parameters={
-                key: float(value) for key, value in self.injection_parameters.items()
-            },
+            injection_parameters=self.injection_parameters,
             meta_data=self.meta_data,
         )
 
