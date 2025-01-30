@@ -45,7 +45,9 @@ def step(
     proposed = dict()
     for key in samples:
         diffs = proposal_points[key][prop_idxs[0]] - proposal_points[key][prop_idxs[1]]
-        proposed[key] = samples[key] + deltas * diffs
+        proposed[key] = jax.vmap(lambda sample, delta, diff: sample + delta * diff)(samples[key], deltas, diffs)
+        # proposed[key] = samples[key] + jax.vmap(lambda delta, diff: delta * diff)(deltas, diffs)
+        # proposed[key] = samples[key] + deltas * diffs
     if boundary_fn is not None:
         proposed = boundary_fn(proposed)
 
@@ -54,7 +56,7 @@ def step(
     mh_ratio = proposed_priors - old_priors
     accept = mh_ratio > jnp.log(jax.random.uniform(subkey_3, mh_ratio.shape))
     for key in samples:
-        samples[key] = jnp.where(accept, proposed[key], samples[key])
+        samples[key] = jax.vmap(jnp.where)(accept, proposed[key], samples[key])
     ln_likelihoods = jnp.where(accept, proposed_ln_likelihoods, ln_likelihoods)
 
     return rng_key, samples, ln_likelihoods, accept
