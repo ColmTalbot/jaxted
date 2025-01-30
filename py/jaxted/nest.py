@@ -44,7 +44,7 @@ def run_nest(
     state, output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
     _, ln_normalization, ln_evidence, _, _, ln_likelihoods = state
     dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
-    output = {key: output[key].flatten() for key in output}
+    output = {key: output[key].reshape((nlive * sub_iterations,) + output[key].shape[2:]) for key in output}
     while dlogz_ > dlogz:
         print(
             f"dlogz = {dlogz_:.2f} > {dlogz:.2f} running again ({ln_evidence:.2f}, {ln_normalization:.2f})"
@@ -53,7 +53,7 @@ def run_nest(
         _, ln_normalization, ln_evidence, _, _, ln_likelihoods = state
         dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
         output = {
-            key: jnp.concatenate([output[key], new_output[key].flatten()])
+            key: jnp.concatenate([output[key], new_output[key].reshape((nlive * sub_iterations,) + output[key].shape[2:])])
             for key in output
         }
 
