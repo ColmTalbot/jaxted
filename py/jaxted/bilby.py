@@ -63,16 +63,9 @@ class Jaxted(Sampler):
         return np.nan
 
     def run_sampler(self):
-        likelihood_fn = jax.vmap(
-            partial(
-                generic_bilby_likelihood_function,
-                self.likelihood,
-                use_ratio=self.use_ratio,
-            )
+        likelihood_fn, ln_prior_fn, sample_fn, boundary_fn = jaxted_inputs_from_bilby(
+            self.likelihood, self.priors, use_ratio=self.use_ratio
         )
-        boundary_fn = partial(apply_boundary, priors=self.priors)
-        ln_prior_fn = partial(generic_bilby_ln_prior, priors=self.priors)
-        sample_fn = self.priors.sample
 
         method = self.kwargs.pop("method", "nest")
         if method == "nest":
@@ -117,3 +110,17 @@ class Jaxted(Sampler):
         """
         self.kwargs["npool"] = 1
         super()._setup_pool()
+
+
+def jaxted_inputs_from_bilby(likelihood, priors, use_ratio=False):
+    likelihood_fn = jax.vmap(
+        partial(
+            generic_bilby_likelihood_function,
+            likelihood,
+            use_ratio=use_ratio,
+        )
+    )
+    boundary_fn = partial(apply_boundary, priors=priors)
+    ln_prior_fn = partial(generic_bilby_ln_prior, priors=priors)
+    sample_fn = priors.sample
+    return likelihood_fn, ln_prior_fn, sample_fn, boundary_fn
