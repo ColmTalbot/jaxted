@@ -40,12 +40,19 @@ def step(
         (2, len(ln_likelihoods)),
         p=valid_points / valid_points.sum(),
     )
-    deltas = jax.random.uniform(subkey_2, (len(ln_likelihoods),))
+    deltas = jnp.where(
+        jax.random.choice(subkey_3, 2, (len(ln_likelihoods),)).astype(bool),
+        jax.random.uniform(subkey_2, (len(ln_likelihoods),)),
+        1.0,
+    )
 
     proposed = dict()
     for key in samples:
         diffs = proposal_points[key][prop_idxs[0]] - proposal_points[key][prop_idxs[1]]
-        proposed[key] = jax.vmap(lambda sample, delta, diff: sample + delta * diff)(samples[key], deltas, diffs)
+        proposed[key] = jax.vmap(lambda sample, delta, diff: sample + delta * diff)(
+            samples[key], deltas, diffs
+        )
+        proposed[key] = proposed[key].astype(samples[key])
     if boundary_fn is not None:
         proposed = boundary_fn(proposed)
 
