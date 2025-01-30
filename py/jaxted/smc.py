@@ -69,6 +69,7 @@ def anssmc(
     ==========
     [1]_ https://arxiv.org/abs/1805.03924
     """
+
     @while_tqdm()
     def cond_func(state):
         (
@@ -188,6 +189,7 @@ def nssmc(
     ==========
     [1]_ https://arxiv.org/abs/1805.03924
     """
+
     @scan_tqdm(len(levels), print_rate=1)
     def body_func(state, idx):
         level = levels[idx]
