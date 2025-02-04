@@ -201,7 +201,7 @@ def nssmc(
     state, output = jax.lax.scan(body_func, state, jnp.arange(len(levels)))
     rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = state
 
-    output = {key: output[key].flatten() for key in output}
+    output = {key: value.reshape((-1,) + value.shape[2:]) for key, value in output.items()}
 
     ln_post_weights = ln_normalization + ln_likelihoods
     for key in samples:
