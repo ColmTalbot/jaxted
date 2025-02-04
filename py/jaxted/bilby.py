@@ -87,11 +87,10 @@ class Jaxted(Sampler):
         return self.result
 
     def create_result(self, samples, ln_z, ln_zerr):
-        posterior_samples = pd.DataFrame(samples)
         return Result(
             label=self.label,
             outdir=self.outdir,
-            posterior=posterior_samples,
+            samples=samples,
             log_evidence=float(ln_z),
             search_parameter_keys=self.search_parameter_keys,
             priors=self.priors,
