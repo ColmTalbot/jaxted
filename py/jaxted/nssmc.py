@@ -7,10 +7,10 @@ import jax.numpy as jnp
 __all__ = ["initialize", "step", "mutate", "new_step"]
 
 
-def initialize(likelihood_fn, sample_prior, nlive, rseed):
+def initialize(likelihood_fn, sample_prior, nlive, rseed, **args):
     rng_key = jax.random.PRNGKey(rseed)
-    samples = sample_prior(nlive)
-    ln_likelihoods = likelihood_fn(samples)
+    samples = sample_prior(nlive, rng_key=rng_key, **args)
+    ln_likelihoods = likelihood_fn(samples, **args)
 
     ln_normalization = 0.0
     ln_evidence = -np.inf
@@ -29,9 +29,10 @@ def step(
     likelihood_fn,
     ln_prior_fn,
     boundary_fn,
+    **args,
 ):
     valid_points = ln_likelihoods > level
-    old_priors = ln_prior_fn(samples)
+    old_priors = ln_prior_fn(samples, **args)
 
     rng_key, subkey_1, subkey_2, subkey_3 = jax.random.split(rng_key, 4)
     prop_idxs = jax.random.choice(
@@ -56,8 +57,8 @@ def step(
     if boundary_fn is not None:
         proposed = boundary_fn(proposed)
 
-    proposed_ln_likelihoods = likelihood_fn(proposed)
-    proposed_priors = ln_prior_fn(proposed) + jnp.log(proposed_ln_likelihoods > level)
+    proposed_ln_likelihoods = likelihood_fn(proposed, **args)
+    proposed_priors = ln_prior_fn(proposed, **args) + jnp.log(proposed_ln_likelihoods > level)
     mh_ratio = proposed_priors - old_priors
     accept = mh_ratio > jnp.log(jax.random.uniform(subkey_3, mh_ratio.shape))
     for key in samples:
@@ -80,6 +81,7 @@ def mutate(
     ln_prior_fn,
     boundary_fn,
     nsteps=500,
+    **args,
 ):
     total_accepted = jnp.zeros(ln_likelihoods.shape)
     (rng_key, samples, _, ln_likelihoods, _), accepted = jax.lax.scan(
@@ -88,6 +90,7 @@ def mutate(
             likelihood_fn=likelihood_fn,
             ln_prior_fn=ln_prior_fn,
             boundary_fn=boundary_fn,
+            **args,
         ),
         (rng_key, samples, proposal_points, ln_likelihoods, level),
         length=nsteps,
@@ -97,12 +100,13 @@ def mutate(
 
 
 @partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn"))
-def new_step(state, x, likelihood_fn, ln_prior_fn, boundary_fn):
+def new_step(state, x, likelihood_fn, ln_prior_fn, boundary_fn, **args):
     _, _, proposal_points, _, level = state
     rng_key, samples, ln_likelihoods, accept = step(
         *state,
         likelihood_fn=likelihood_fn,
         ln_prior_fn=ln_prior_fn,
         boundary_fn=boundary_fn,
+        **args,
     )
     return (rng_key, samples, proposal_points, ln_likelihoods, level), accept.mean()

@@ -62,7 +62,7 @@ def log_prior(
     return soft_vmap(single_loglik, posterior_samples, len(batch_shape), chunk_size)
 
 
-def sample_prior(num_samples, model, *args, **kwargs):
+def sample_prior(num_samples, model, rng_key, *args, **kwargs):
     pred = Predictive(model, num_samples=num_samples)
     return pred(jax.random.PRNGKey(np.random.randint(100000)), *args, **kwargs)
 
@@ -77,20 +77,23 @@ def jaxted_inputs_from_numpyro(model, *args, **kwargs):
     :return: tuple of log likelihood, log prior, sample prior, and boundary function.
     """
 
-    def likelihood_fn(x):
-        lnls = sum(log_likelihood(model, x, *args, **kwargs).values())
+    def likelihood_fn(x, *new_args, **new_kwargs):
+        lnls = sum(log_likelihood(model, x, *new_args, *args, **new_kwargs, **kwargs).values())
         while lnls.ndim > 1:
             lnls = lnls.sum(axis=-1)
         return lnls
 
-    def ln_prior_fn(x):
-        lnps = sum(log_prior(model, x, *args, **kwargs).values())
+    def ln_prior_fn(x, *new_args, **new_kwargs):
+        lnps = sum(log_prior(model, x, *new_args, *args, **new_kwargs, **kwargs).values())
         while lnps.ndim > 1:
             lnps = lnps.sum(axis=-1)
         return lnps
 
-    def sample_fn(n):
-        return sample_prior(n, model, *args, **kwargs)
+    def sample_fn(n, *new_args, **new_kwargs):
+        vals = sample_prior(n, model, *new_args, *args, **new_kwargs, **kwargs)
+        if "ln_l" in vals:
+            del vals["ln_l"]
+        return vals
 
     boundary_fn = None
 

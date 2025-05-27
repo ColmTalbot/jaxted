@@ -17,6 +17,19 @@ __all__ = [
 ]
 
 
+@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "nsteps"))
+def body_func(state, level, likelihood_fn, ln_prior_fn, boundary_fn, nsteps, **args):
+    return outer_step(
+        state,
+        likelihood_fn=likelihood_fn,
+        ln_prior_fn=ln_prior_fn,
+        boundary_fn=boundary_fn,
+        nsteps=nsteps,
+        **args,
+    )
+
+
+@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "sample_prior", "boundary_fn", "nsteps", "dlogz", "sub_iterations", "nlive"))
 def run_nest(
     likelihood_fn,
     ln_prior_fn,
@@ -28,46 +41,57 @@ def run_nest(
     nsteps=500,
     rseed=20,
     dlogz=0.1,
+    **args,
 ):
-    state = initialize(likelihood_fn, sample_prior, nlive, rseed)
+    state = initialize(likelihood_fn, sample_prior, nlive, rseed, **args)
 
-    @scan_tqdm(sub_iterations, print_rate=1)
-    def body_func(state, level):
-        return outer_step(
-            state,
-            likelihood_fn=likelihood_fn,
-            ln_prior_fn=ln_prior_fn,
-            boundary_fn=boundary_fn,
-            nsteps=nsteps,
-        )
+    # @scan_tqdm(sub_iterations, print_rate=1)
+    # def body_func(state, level):
+    #     return outer_step(
+    #         state,
+    #         likelihood_fn=likelihood_fn,
+    #         ln_prior_fn=ln_prior_fn,
+    #         boundary_fn=boundary_fn,
+    #         nsteps=nsteps,
+    #     )
+    func = partial(body_func, likelihood_fn=likelihood_fn, ln_prior_fn=ln_prior_fn, boundary_fn=boundary_fn, nsteps=nsteps, **args)
 
-    state, output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
+    # state, output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
+    state, output = jax.lax.scan(func, state, jnp.arange(sub_iterations))
     _, ln_normalization, ln_evidence, _, _, ln_likelihoods = state
     dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
-    output = {key: values.reshape((-1,) + values.shape[2:]) for key, values in output.items()}
-    while dlogz_ > dlogz:
-        print(
-            f"dlogz = {dlogz_:.2f} > {dlogz:.2f} running again ({ln_evidence:.2f}, {ln_normalization:.2f})"
-        )
-        state, new_output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
-        _, ln_normalization, ln_evidence, _, _, ln_likelihoods = state
-        dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
-        output = {
-            key: jnp.concatenate([output[key], new_output[key].reshape(
-                (-1,) + new_output[key].shape[2:]
-            )])
-            for key in output
-        }
+    # if "ln_l" in output:
+    # del output["ln_l"]
+    output = {key: values.squeeze().reshape((-1,) + values.shape[2:]) for key, values in output.items()}
+    # for _ in range(1):
+    # # while dlogz_ > dlogz:
+    #     # print(
+    #     #     f"dlogz = {dlogz_:.2f} > {dlogz:.2f} running again ({ln_evidence:.2f}, {ln_normalization:.2f})"
+    #     # )
+    #     # state, new_output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
+    #     state, new_output = jax.lax.scan(func, state, jnp.arange(sub_iterations))
+    #     _, ln_normalization, ln_evidence, _, _, ln_likelihoods = state
+    #     dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
+    #     # if "ln_l" in new_output:
+    #     del new_output["ln_l"]
+    #     output = {
+    #         key: jnp.concatenate([output[key], new_output[key].reshape(
+    #             (-1,) + new_output[key].shape[2:]
+    #         )])
+    #         for key in output
+    #     }
 
     rng_key, ln_normalization, _, _, samples, ln_likelihoods = state
     ln_post_weights = ln_normalization + ln_likelihoods - jnp.log(nlive)
 
     insertion_indices = output.pop("insertion_index")
-    pvalue = insertion_index_test(insertion_indices, nlive)
-    print(f"Likelihood insertion test p-value: {pvalue:.4f}")
+    # pvalue = insertion_index_test(insertion_indices, nlive)
+    # print(f"Likelihood insertion test p-value: {pvalue:.4f}")
 
     output["ln_weights"] = jnp.concatenate([output["ln_weights"], ln_post_weights])
     output["ln_likelihood"] = jnp.concatenate([output["ln_likelihood"], ln_likelihoods])
+    # if "ln_l" in samples:
+    # del samples["ln_l"]
     for key in samples:
         output[key] = jnp.concatenate([output[key], samples[key]])
 
@@ -77,9 +101,9 @@ def run_nest(
     variance = jnp.exp(ln_variance - 2 * ln_evidence)
     ln_evidence_err = variance**0.5
 
-    ln_weights -= jnp.max(ln_weights)
-    keep = ln_weights > jnp.log(jax.random.uniform(rng_key, ln_weights.shape))
-    output = {key: values[keep] for key, values in output.items()}
+    # ln_weights -= jnp.max(ln_weights)
+    # keep = ln_weights > jnp.log(jax.random.uniform(rng_key, ln_weights.shape))
+    # output = {key: values[keep] for key, values in output.items()}
 
     return ln_evidence, ln_evidence_err, output
 
@@ -137,7 +161,7 @@ def digest(state, proposed):
 @partial(
     jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "nsteps")
 )
-def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, nsteps):
+def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, nsteps, **args):
     rng_key, _, _, _, samples, ln_likelihoods = state
     proposal_points = {key: samples[key].copy() for key in samples}
     level = jnp.min(ln_likelihoods)
@@ -151,6 +175,7 @@ def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, nsteps):
         ln_prior_fn=ln_prior_fn,
         boundary_fn=boundary_fn,
         nsteps=nsteps,
+        **args,
     )
     new_samples["ln_likelihood"] = new_ln_likelihoods
     return jax.lax.scan(
