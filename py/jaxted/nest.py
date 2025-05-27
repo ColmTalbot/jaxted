@@ -17,6 +17,19 @@ __all__ = [
 ]
 
 
+@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "nsteps"))
+def body_func(state, level, likelihood_fn, ln_prior_fn, boundary_fn, nsteps, **args):
+    return outer_step(
+        state,
+        likelihood_fn=likelihood_fn,
+        ln_prior_fn=ln_prior_fn,
+        boundary_fn=boundary_fn,
+        nsteps=nsteps,
+        **args,
+    )
+
+
+@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "sample_prior", "boundary_fn", "nsteps", "dlogz", "sub_iterations", "nlive"))
 def run_nest(
     likelihood_fn,
     ln_prior_fn,
@@ -31,11 +44,12 @@ def run_nest(
     dlogz=0.1,
     plotdir=None,
     naccept=60,
+    **args,
 ):
-    state = initialize(likelihood_fn, sample_prior, transform, nlive, rseed)
+    state = initialize(likelihood_fn, sample_prior, transform, nlive, rseed, **args)
 
     # @scan_tqdm(sub_iterations, print_rate=1)
-    def body_func(state, level, proposal, adapt, naccept):
+    def body_func(state, level, proposal, adapt, naccept, **args):
         return outer_step(
             state,
             likelihood_fn=likelihood_fn,
@@ -51,7 +65,7 @@ def run_nest(
 
     state, output = jax.lax.scan(
         scan_tqdm(sub_iterations, print_rate=1)(
-            partial(body_func, proposal=uniform, adapt=False, naccept=naccept)
+            partial(body_func, proposal=uniform, adapt=False, naccept=naccept, **args)
         ),
         state, jnp.arange(sub_iterations)
     )
@@ -86,7 +100,7 @@ def run_nest(
 
         state, new_output = jax.lax.scan(
             scan_tqdm(sub_iterations, print_rate=1)(
-                partial(body_func, proposal=differential_evolution, adapt=True, naccept=naccept)
+                partial(body_func, proposal=differential_evolution, adapt=True, naccept=naccept, **args)
             ),
             state, jnp.arange(sub_iterations)
         )
@@ -109,6 +123,8 @@ def run_nest(
 
     output["ln_weights"] = jnp.concatenate([output["ln_weights"], ln_post_weights])
     output["ln_likelihood"] = jnp.concatenate([output["ln_likelihood"], ln_likelihoods])
+    # if "ln_l" in samples:
+    # del samples["ln_l"]
     for key in samples:
         output[key] = jnp.concatenate([output[key], samples[key]])
 
@@ -118,9 +134,9 @@ def run_nest(
     variance = jnp.exp(ln_variance - 2 * ln_evidence)
     ln_evidence_err = variance**0.5
 
-    ln_weights -= jnp.max(ln_weights)
-    keep = ln_weights > jnp.log(jax.random.uniform(rng_key, ln_weights.shape))
-    output = {key: values[keep] for key, values in output.items()}
+    # ln_weights -= jnp.max(ln_weights)
+    # keep = ln_weights > jnp.log(jax.random.uniform(rng_key, ln_weights.shape))
+    # output = {key: values[keep] for key, values in output.items()}
 
     return ln_evidence, ln_evidence_err, output
 
@@ -184,7 +200,7 @@ def digest(state, proposed):
 @partial(
     jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "proposal", "adapt")
 )
-def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, proposal, adapt, naccept):
+def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, proposal, adapt, naccept, **args):
     rng_key, _, _, _, samples, ln_likelihoods, nsteps = state
     proposal_points = {key: samples[key].copy() for key in samples}
     level = jnp.min(ln_likelihoods)
@@ -200,6 +216,7 @@ def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, propos
         transform=transform,
         nsteps=nsteps,
         proposal=proposal,
+        **args,
     )
     if adapt:
         new_nsteps = nsteps * (1 + naccept / total_accepted) / 2

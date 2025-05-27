@@ -7,16 +7,16 @@ import jax.numpy as jnp
 __all__ = ["initialize", "differential_evolution", "mutate", "new_step"]
 
 
-def initialize(likelihood_fn, sample_prior, transform, nlive, rseed):
+def initialize(likelihood_fn, sample_prior, transform, nlive, rseed, **args):
     rng_key = jax.random.PRNGKey(rseed)
-    samples = sample_prior(nlive)
+    samples = sample_prior(nlive, rng_key=rng_key, **args)
 
     if transform is not None:
         transformed = transform(samples)
     else:
         transformed = samples
 
-    ln_likelihoods = likelihood_fn(transformed)
+    ln_likelihoods = likelihood_fn(transformed, **args)
 
     ln_normalization = 0.0
     ln_evidence = -np.inf
@@ -36,8 +36,9 @@ def uniform(
     ln_prior_fn,
     boundary_fn,
     transform,
+    **args,
 ):
-    old_priors = ln_prior_fn(samples)
+    old_priors = ln_prior_fn(samples, **args)
 
     rng_key, subkey, *sample_keys = jax.random.split(rng_key, len(samples) + 2)
 
@@ -51,8 +52,8 @@ def uniform(
     else:
         transformed = proposed
 
-    proposed_ln_likelihoods = likelihood_fn(transformed)
-    proposed_priors = ln_prior_fn(proposed) + jnp.log(proposed_ln_likelihoods > level)
+    proposed_ln_likelihoods = likelihood_fn(transformed, **args)
+    proposed_priors = ln_prior_fn(proposed, **args) + jnp.log(proposed_ln_likelihoods > level)
 
     mh_ratio = proposed_priors - old_priors
     accept = mh_ratio > jnp.log(jax.random.uniform(subkey, mh_ratio.shape))
@@ -75,9 +76,10 @@ def differential_evolution(
     ln_prior_fn,
     boundary_fn,
     transform,
+    **args,
 ):
     valid_points = ln_likelihoods > level
-    old_priors = ln_prior_fn(samples)
+    old_priors = ln_prior_fn(samples, **args)
 
     rng_key, subkey_1, subkey_2, subkey_3, subkey_4 = jax.random.split(rng_key, 5)
 
@@ -110,8 +112,8 @@ def differential_evolution(
     else:
         transformed = proposed
 
-    proposed_ln_likelihoods = likelihood_fn(transformed)
-    proposed_priors = ln_prior_fn(proposed) + jnp.log(proposed_ln_likelihoods > level)
+    proposed_ln_likelihoods = likelihood_fn(transformed, **args)
+    proposed_priors = ln_prior_fn(proposed, **args) + jnp.log(proposed_ln_likelihoods > level)
 
     mh_ratio = proposed_priors - old_priors
     accept = mh_ratio > jnp.log(jax.random.uniform(subkey_4, mh_ratio.shape))
@@ -138,6 +140,7 @@ def mutate(
     transform,
     proposal=differential_evolution,
     nsteps=500,
+    **args,
 ):
     body_fn = partial(
         new_step,
@@ -146,6 +149,7 @@ def mutate(
         boundary_fn=boundary_fn,
         transform=transform,
         step_fn=proposal,
+        **args,
     )
 
     state = (rng_key, samples, proposal_points, ln_likelihoods, level, jnp.array(0))
@@ -159,7 +163,7 @@ def mutate(
 
 
 @partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "step_fn"))
-def new_step(ii, state, likelihood_fn, ln_prior_fn, boundary_fn, transform, step_fn=differential_evolution):
+def new_step(ii, state, likelihood_fn, ln_prior_fn, boundary_fn, transform, step_fn=differential_evolution, **args):
     _, _, proposal_points, _, level, n_accept = state
     rng_key, samples, ln_likelihoods, accept = step_fn(
         *state[:-1],
@@ -167,6 +171,7 @@ def new_step(ii, state, likelihood_fn, ln_prior_fn, boundary_fn, transform, step
         ln_prior_fn=ln_prior_fn,
         boundary_fn=boundary_fn,
         transform=transform,
+        **args,
     )
     n_accept += accept.mean()
     return (rng_key, samples, proposal_points, ln_likelihoods, level, n_accept)
