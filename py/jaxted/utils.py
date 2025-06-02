@@ -118,7 +118,9 @@ def while_tqdm(
     """
 
     kwargs["desc"] = kwargs.get("desc", "Running while loop")
-    update_progress_bar, close_tqdm = build_tqdm(-100, print_rate, tqdm_type, **kwargs)
+    update_progress_bar, close_tqdm = build_tqdm(
+        100000, print_rate, tqdm_type, **kwargs
+    )
 
     def _while_tqdm(func):
         """
@@ -140,7 +142,7 @@ def while_tqdm(
                 i, val = update_progress_bar((i, val), i)
                 result = func(val)
                 output = result
-            i = jax.lax.select(result, i, -101)
+            i = jax.lax.select(result, i, 100000 - 1)
             return close_tqdm(output, i, bar_id=bar_id)
 
         return wrapper_progress_bar
