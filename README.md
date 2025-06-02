@@ -1,12 +1,6 @@
 # jaxted
 
-**jaxted** is a JAX-native library for performing nested sampling and nested sampling via Sequential Monte Carlo (SMC). It is designed for scalable, efficient Bayesian computation and evidence estimation, leveraging JAX's hardware acceleration and automatic vectorization.
-
-## Features
-
-- **Nested Sampling**: Estimate Bayesian evidence and sample from complex posteriors.
-- **SMC Nested Sampling**: Sequential Monte Carlo approach for improved efficiency and flexibility.
-- **JAX-native**: Fully compatible with JAX transformations (`jit`, `vmap`, etc.) and accelerators (GPU/TPU).
+**jaxted** is a JAX-native library for performing nested sampling and nested sampling (NS) via Sequential Monte Carlo (NS-SMC).
 
 ## Installation
 
