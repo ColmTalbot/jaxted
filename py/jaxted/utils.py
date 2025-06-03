@@ -10,7 +10,7 @@ import jax
 import jax.numpy as jnp
 from scipy.stats import randint, ks_1samp
 from jax_tqdm import PBar
-from jax_tqdm.pbar import build_tqdm
+from jax_tqdm.base import build_tqdm
 
 __all__ = [
     "apply_boundary",
