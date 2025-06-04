@@ -5,7 +5,6 @@ import jax
 import numpy as np
 import pandas as pd
 from bilby.core.sampler.base_sampler import Sampler
-from bilby.core.result import Result
 from bilby.compat.jax import generic_bilby_likelihood_function
 
 from .nest import run_nest
@@ -82,23 +81,17 @@ class Jaxted(Sampler):
             boundary_fn=boundary_fn,
             **self.kwargs,
         )
-        self.result = self.create_result(samples, ln_z, ln_zerr)
+        self.create_result(samples, ln_z, ln_zerr)
         self.kwargs["method"] = method
         return self.result
 
     def create_result(self, samples, ln_z, ln_zerr):
-        return Result(
-            label=self.label,
-            outdir=self.outdir,
-            samples=samples,
-            log_evidence=float(ln_z),
-            search_parameter_keys=self.search_parameter_keys,
-            priors=self.priors,
-            log_noise_evidence=self.likelihood.noise_log_likelihood(),
-            log_evidence_err=ln_zerr,
-            log_bayes_factor=float(ln_z) - self.likelihood.noise_log_likelihood(),
-            injection_parameters=self.injection_parameters,
-            meta_data=self.meta_data,
+        self.result.samples = samples
+        self.result.log_evidence = float(ln_z)
+        self.result.log_evidence_err = ln_zerr
+        self.result.log_noise_evidence = self.likelihood.noise_log_likelihood()
+        self.result.log_bayes_factor = (
+            float(ln_z) - self.likelihood.noise_log_likelihood()
         )
 
     def _setup_pool(self):
