@@ -65,6 +65,25 @@ def generic_bilby_ln_prior(samples, priors):
 
 
 @partial(jax.jit, static_argnames=("priors",))
+def rescale(samples, priors):
+    """
+    Wrapper to function to evaluate the log prior density from a :code:`Bilby`
+    prior dictionary.
+
+    Parameters
+    ==========
+    samples: dict[str, array-like]
+    priors: bilby.core.prior.PriorDict
+
+    Returns
+    =======
+    array-like
+    """
+    scaled = priors.rescale(samples.keys(), jnp.array(list(samples.values())))
+    return {key: scaled[ii] for ii, key in enumerate(samples.keys())}
+
+
+@partial(jax.jit, static_argnames=("priors",))
 def apply_boundary(samples, priors):
     """
     Apply periodic boundary conditions to the input samples using the provided
@@ -139,7 +158,7 @@ def while_tqdm(
             else:
                 i = val[-1]
                 bar_id = 0
-                i, val = update_progress_bar((i, val), i)
+                i, val = update_progress_bar((i, val), i, bar_id=bar_id)
                 result = func(val)
                 output = result
             i = jax.lax.select(result, i, 100000 - 1)
@@ -197,10 +216,13 @@ def distance_insertion_index(live_u, start, point):
 
     I think this is not currently working.
     """
-    norms = jnp.std(live_u, axis=0)
-    distance = jnp.linalg.norm((point - start) / norms, axis=0)
-    all_distances = jnp.linalg.norm((live_u - start) / norms, axis=0)
-    values = jnp.sum(all_distances[:, None] < distance[None, :], axis=0)
+    live_u = jnp.array(list(live_u.values()))
+    start = jnp.array(list(start.values()))
+    point = jnp.array(list(point.values()))
+    norms = jnp.std(live_u, axis=-1)
+    distance = jnp.linalg.norm((point - start) / norms, axis=-1)
+    all_distances = jnp.linalg.norm((live_u - start[:, None]) / norms[:, None], axis=0)
+    values = jnp.sum(all_distances < distance)
     return values
 
 

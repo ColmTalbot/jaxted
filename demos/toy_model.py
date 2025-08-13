@@ -9,12 +9,12 @@ def func(data, x, y):
 
 def setup_toy_likelihood_and_priors():
     priors = bilby.core.prior.PriorDict()
-    priors['x'] = bilby.core.prior.Uniform(0, 1, 'x')
-    priors['y'] = bilby.core.prior.Uniform(0, 1, 'y')
+    priors['x'] = bilby.core.prior.Uniform(-1, 2, 'x')
+    priors['y'] = bilby.core.prior.Uniform(-1, 2, 'y')
 
     data = np.random.normal(0, 1, (1000, 2))
     points = np.linspace(0, 1, 1000)
-    data += func(points, *[0.5 for _ in priors])
+    data += func(points, *[0.7 for _ in priors])
 
     likelihood = bilby.core.likelihood.GaussianLikelihood(
         x=jax.numpy.array(points),
@@ -28,13 +28,16 @@ def setup_toy_likelihood_and_priors():
 if __name__ == "__main__":
 
     likelihood, priors = setup_toy_likelihood_and_priors()
-    result = bilby.run_sampler(
-        likelihood,
-        priors,
-        sampler="jaxted",
-        outdir="test",
-        label="toy",
-        injection_parameters={'x': 0.5, 'y': 0.5},
-        save="hdf5",
-    )
-    result.plot_corner()
+    results = list()
+    for nsteps in [3, 10, 30, 100]:
+        results.append(bilby.run_sampler(
+            likelihood,
+            priors,
+            sampler="jaxted",
+            outdir="test",
+            label="toy",
+            injection_parameters={'x': 0.7, 'y': 0.7},
+            nsteps=nsteps,
+            save="hdf5",
+        ))
+    bilby.core.result.plot_multiple(results, filename="test/toy_model.png")

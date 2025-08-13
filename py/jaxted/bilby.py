@@ -3,13 +3,12 @@ from functools import partial
 
 import jax
 import numpy as np
-import pandas as pd
 from bilby.core.sampler.base_sampler import Sampler
 from bilby.compat.jax import generic_bilby_likelihood_function
 
 from .nest import run_nest
 from .smc import run_nssmc_anssmc
-from .utils import apply_boundary, generic_bilby_ln_prior
+from .utils import apply_boundary, rescale
 
 os.environ["JAX_TRACEBACK_FILTERING"] = "off"
 os.environ["BILBY_ARRAY_API"] = "1"
@@ -62,7 +61,7 @@ class Jaxted(Sampler):
         return np.nan
 
     def run_sampler(self):
-        likelihood_fn, ln_prior_fn, sample_fn, boundary_fn = jaxted_inputs_from_bilby(
+        likelihood_fn, ln_prior_fn, sample_fn, boundary_fn, transform = jaxted_inputs_from_bilby(
             self.likelihood, self.priors, use_ratio=self.use_ratio
         )
 
@@ -79,8 +78,13 @@ class Jaxted(Sampler):
             ln_prior_fn=ln_prior_fn,
             sample_prior=sample_fn,
             boundary_fn=boundary_fn,
+            transform=transform,
             **self.kwargs,
         )
+        samples.update(transform({
+            key: samples[key] for key in self.search_parameter_keys
+        }))
+        
         self.create_result(samples, ln_z, ln_zerr)
         self.kwargs["method"] = method
         return self.result
@@ -113,6 +117,21 @@ def jaxted_inputs_from_bilby(likelihood, priors, use_ratio=False):
         )
     )
     boundary_fn = partial(apply_boundary, priors=priors)
-    ln_prior_fn = partial(generic_bilby_ln_prior, priors=priors)
-    sample_fn = priors.sample
-    return likelihood_fn, ln_prior_fn, sample_fn, boundary_fn
+    ln_prior_fn = _ln_prior_fn
+    sample_fn = partial(sample_unit, keys=tuple(priors.keys()))
+    transform = partial(rescale, priors=priors)
+    return likelihood_fn, ln_prior_fn, sample_fn, boundary_fn, transform
+
+
+import jax.numpy as jnp
+
+
+def _ln_prior_fn(parameters):
+    return jnp.sum(jnp.log(jnp.array([
+        (val >= 0) * (val <= 1)
+        for val in parameters.values()
+    ])), axis=0)
+
+
+def sample_unit(n_samples, keys):
+    return {key: jnp.array(np.random.uniform(0, 1, n_samples)) for key in keys}

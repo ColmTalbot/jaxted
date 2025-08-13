@@ -18,6 +18,7 @@ def anssmc(
     sample_prior,
     *,
     boundary_fn=None,
+    transform=None,
     alpha=np.exp(-1),
     max_iterations=100,
     nlive=1000,
@@ -70,7 +71,7 @@ def anssmc(
     [1]_ https://arxiv.org/abs/1805.03924
     """
 
-    @while_tqdm()
+    # @while_tqdm()
     def cond_func(state):
         (
             _,
@@ -115,13 +116,13 @@ def anssmc(
 
         inner_state = state[:-2]
         inner_state, _ = smc_step(
-            *inner_state, level, likelihood_fn, ln_prior_fn, boundary_fn, nsteps=nsteps
+            *inner_state, level, likelihood_fn, ln_prior_fn, boundary_fn, transform, nsteps=nsteps
         )
         return inner_state + (levels, iteration)
 
     levels = jnp.full(max_iterations, jnp.nan)
     iteration = 0
-    state = initialize(likelihood_fn, sample_prior, nlive, rseed) + (
+    state = initialize(likelihood_fn, sample_prior, transform, nlive, rseed) + (
         levels,
         iteration,
     )
@@ -144,6 +145,7 @@ def nssmc(
     sample_prior,
     *,
     boundary_fn=None,
+    transform,
     levels,
     nlive=1000,
     rseed=10,
@@ -194,10 +196,10 @@ def nssmc(
     def body_func(state, idx):
         level = levels[idx]
         return smc_step(
-            *state, level, likelihood_fn, ln_prior_fn, boundary_fn, nsteps=nsteps
+            *state, level, likelihood_fn, ln_prior_fn, boundary_fn, transform, nsteps=nsteps
         )
 
-    state = initialize(likelihood_fn, sample_prior, nlive, rseed)
+    state = initialize(likelihood_fn, sample_prior, transform, nlive, rseed)
     state, output = jax.lax.scan(body_func, state, jnp.arange(len(levels)))
     rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = state
 
@@ -226,7 +228,7 @@ def nssmc(
 
 
 @partial(
-    jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "nsteps")
+    jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "nsteps")
 )
 def smc_step(
     rng_key,
@@ -239,6 +241,7 @@ def smc_step(
     likelihood_fn,
     ln_prior_fn,
     boundary_fn,
+    transform,
     nsteps=500,
 ):
     """
@@ -317,6 +320,7 @@ def smc_step(
         likelihood_fn=likelihood_fn,
         ln_prior_fn=ln_prior_fn,
         boundary_fn=boundary_fn,
+        transform=transform,
         nsteps=nsteps,
     )
     state = (
@@ -352,6 +356,7 @@ def run_nssmc_anssmc(
     sample_prior,
     *,
     boundary_fn=None,
+    transform=None,
     verbose=False,
     nlive=1000,
     nsteps=400,
@@ -410,6 +415,7 @@ def run_nssmc_anssmc(
         ln_prior_fn,
         sample_prior,
         boundary_fn=boundary_fn,
+        transform=transform,
         nlive=nlive // 10,
         nsteps=nsteps,
         rseed=rseed,
@@ -422,6 +428,7 @@ def run_nssmc_anssmc(
         ln_prior_fn,
         sample_prior,
         boundary_fn=boundary_fn,
+        transform=transform,
         levels=levels,
         nlive=nlive,
         nsteps=nsteps,
