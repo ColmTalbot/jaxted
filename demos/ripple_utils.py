@@ -3,13 +3,18 @@ Generic dumping ground for jax-specific functions that we need.
 This should find a home somewhere down the line, but gives an
 idea of how much pain is being added.
 """
+
 from functools import partial
 
 import jax
 import jax.numpy as jnp
 from astropy import constants
 from ripplegw.waveforms import (
-    IMRPhenomD, IMRPhenomD_NRTidalv2, IMRPhenomPv2, IMRPhenomXAS, TaylorF2
+    IMRPhenomD,
+    IMRPhenomD_NRTidalv2,
+    IMRPhenomPv2,
+    IMRPhenomXAS,
+    TaylorF2,
 )
 
 MTSUN_SI = (constants.GM_sun / constants.c**3).value
@@ -71,7 +76,9 @@ def apply_rotation(arr, rot):
 
 @partial(jax.jit, static_argnames=("convention",))
 def euler_rotation(array, angles, convention="zyz"):
-    rotations = jnp.array([rotate(angle, axis) for angle, axis in zip(angles, convention)])
+    rotations = jnp.array(
+        [rotate(angle, axis) for angle, axis in zip(angles, convention)]
+    )
     return jax.lax.scan(apply_rotation, array, rotations)[0]
 
 
@@ -145,22 +152,72 @@ def transform_precessing_spins(
 
 
 def ripple_bbh_roq(
-    frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-    a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, **kwargs,
+    frequency,
+    mass_1,
+    mass_2,
+    luminosity_distance,
+    theta_jn,
+    phase,
+    a_1,
+    a_2,
+    tilt_1,
+    tilt_2,
+    phi_12,
+    phi_jl,
+    **kwargs,
 ):
-    return ripple_cbc_roq(   
-        frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-        a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, lambda_1=0.0, lambda_2=0.0, **kwargs
+    return ripple_cbc_roq(
+        frequency,
+        mass_1,
+        mass_2,
+        luminosity_distance,
+        theta_jn,
+        phase,
+        a_1,
+        a_2,
+        tilt_1,
+        tilt_2,
+        phi_12,
+        phi_jl,
+        lambda_1=0.0,
+        lambda_2=0.0,
+        **kwargs,
     )
 
 
 def ripple_bns_roq(
-    frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-    a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, lambda_1, lambda_2, **kwargs,
+    frequency,
+    mass_1,
+    mass_2,
+    luminosity_distance,
+    theta_jn,
+    phase,
+    a_1,
+    a_2,
+    tilt_1,
+    tilt_2,
+    phi_12,
+    phi_jl,
+    lambda_1,
+    lambda_2,
+    **kwargs,
 ):
-    return ripple_cbc_roq(   
-        frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-        a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, lambda_1, lambda_2, **kwargs
+    return ripple_cbc_roq(
+        frequency,
+        mass_1,
+        mass_2,
+        luminosity_distance,
+        theta_jn,
+        phase,
+        a_1,
+        a_2,
+        tilt_1,
+        tilt_2,
+        phi_12,
+        phi_jl,
+        lambda_1,
+        lambda_2,
+        **kwargs,
     )
 
 
@@ -178,36 +235,89 @@ def ripple_cbc_roq(*args, **kwargs):
             if not key.endswith("_indices"):
                 continue
             subset = key.rsplit("_", maxsplit=1)[0]
-            output[subset] = {
-                key: value[indices] for key, value in waveform.items()
-            }
+            output[subset] = {key: value[indices] for key, value in waveform.items()}
         waveform = output
     return waveform
 
 
 def ripple_bbh_relbin(
-    frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-    a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, fiducial, **kwargs,
+    frequency,
+    mass_1,
+    mass_2,
+    luminosity_distance,
+    theta_jn,
+    phase,
+    a_1,
+    a_2,
+    tilt_1,
+    tilt_2,
+    phi_12,
+    phi_jl,
+    fiducial,
+    **kwargs,
 ):
     return ripple_cbc_relbin(
-        frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-        a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl,
-        lambda_1=0.0, lambda_2=0.0, fiducial=fiducial, **kwargs,
+        frequency,
+        mass_1,
+        mass_2,
+        luminosity_distance,
+        theta_jn,
+        phase,
+        a_1,
+        a_2,
+        tilt_1,
+        tilt_2,
+        phi_12,
+        phi_jl,
+        lambda_1=0.0,
+        lambda_2=0.0,
+        fiducial=fiducial,
+        **kwargs,
     )
 
 
 def ripple_bns_relbin(
-    frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-    a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, lambda_1, lambda_2, fiducial, **kwargs,
+    frequency,
+    mass_1,
+    mass_2,
+    luminosity_distance,
+    theta_jn,
+    phase,
+    a_1,
+    a_2,
+    tilt_1,
+    tilt_2,
+    phi_12,
+    phi_jl,
+    lambda_1,
+    lambda_2,
+    fiducial,
+    **kwargs,
 ):
     return ripple_cbc_relbin(
-        frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-        a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, lambda_1, lambda_2,
-        fiducial=fiducial, **kwargs,
+        frequency,
+        mass_1,
+        mass_2,
+        luminosity_distance,
+        theta_jn,
+        phase,
+        a_1,
+        a_2,
+        tilt_1,
+        tilt_2,
+        phi_12,
+        phi_jl,
+        lambda_1,
+        lambda_2,
+        fiducial=fiducial,
+        **kwargs,
     )
 
 
-@partial(jax.jit, static_argnames=("spin_reference_frame", "waveform_approximant", "fiducial"))
+@partial(
+    jax.jit,
+    static_argnames=("spin_reference_frame", "waveform_approximant", "fiducial"),
+)
 def ripple_cbc_relbin(frequency, *args, **kwargs):
     if kwargs.get("fiducial", 0) == 1:
         kwargs["frequencies"] = frequency
@@ -217,29 +327,92 @@ def ripple_cbc_relbin(frequency, *args, **kwargs):
 
 
 def ripple_bbh(
-    frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-    a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, **kwargs,
+    frequency,
+    mass_1,
+    mass_2,
+    luminosity_distance,
+    theta_jn,
+    phase,
+    a_1,
+    a_2,
+    tilt_1,
+    tilt_2,
+    phi_12,
+    phi_jl,
+    **kwargs,
 ):
     return ripple_cbc(
-        frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-        a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, lambda_1=0.0, lambda_2=0.0, **kwargs,
+        frequency,
+        mass_1,
+        mass_2,
+        luminosity_distance,
+        theta_jn,
+        phase,
+        a_1,
+        a_2,
+        tilt_1,
+        tilt_2,
+        phi_12,
+        phi_jl,
+        lambda_1=0.0,
+        lambda_2=0.0,
+        **kwargs,
     )
 
 
 def ripple_bns(
-    frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-    a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, lambda_1, lambda_2, **kwargs,
+    frequency,
+    mass_1,
+    mass_2,
+    luminosity_distance,
+    theta_jn,
+    phase,
+    a_1,
+    a_2,
+    tilt_1,
+    tilt_2,
+    phi_12,
+    phi_jl,
+    lambda_1,
+    lambda_2,
+    **kwargs,
 ):
     return ripple_cbc(
-        frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-        a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, lambda_1, lambda_2, **kwargs,
+        frequency,
+        mass_1,
+        mass_2,
+        luminosity_distance,
+        theta_jn,
+        phase,
+        a_1,
+        a_2,
+        tilt_1,
+        tilt_2,
+        phi_12,
+        phi_jl,
+        lambda_1,
+        lambda_2,
+        **kwargs,
     )
 
 
 @partial(jax.jit, static_argnames=("spin_reference_frame", "waveform_approximant"))
 def ripple_cbc(
-    frequency, mass_1, mass_2, luminosity_distance, theta_jn, phase,
-    a_1, a_2, tilt_1, tilt_2, phi_12, phi_jl, lambda_1, lambda_2, **kwargs,
+    frequency,
+    mass_1,
+    mass_2,
+    luminosity_distance,
+    theta_jn,
+    phase,
+    a_1,
+    a_2,
+    tilt_1,
+    tilt_2,
+    phi_12,
+    phi_jl,
+    lambda_1,
+    lambda_2,
+    **kwargs,
 ):
     reference_frequency = kwargs.get("reference_frequency", 50.0)
     iota, spin_1, spin_2 = transform_precessing_spins(
@@ -265,8 +438,8 @@ def ripple_cbc(
 
     component_mass = (mass_1, mass_2)
     mc_eta = (
-        (mass_1 * mass_2)**(3 / 5) / (mass_1 + mass_2)**(1 / 5),
-        mass_1 * mass_2 / (mass_1 + mass_2)**2
+        (mass_1 * mass_2) ** (3 / 5) / (mass_1 + mass_2) ** (1 / 5),
+        mass_1 * mass_2 / (mass_1 + mass_2) ** 2,
     )
     precessing_spins = (*spin_1, *spin_2)
     aligned_spins = (spin_1[2], spin_2[2])
@@ -291,7 +464,9 @@ def ripple_cbc(
             wf_func = TaylorF2.gen_TaylorF2_hphc
             theta = mc_eta + aligned_spins + extrinsic
         case _:
-            raise ValueError(f"Unsupported waveform approximant: {kwargs['waveform_approximant']}")
+            raise ValueError(
+                f"Unsupported waveform approximant: {kwargs['waveform_approximant']}"
+            )
 
     hp, hc = wf_func(frequencies, theta, reference_frequency)
     return dict(plus=hp, cross=hc)
