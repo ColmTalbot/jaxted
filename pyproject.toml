@@ -58,6 +58,20 @@ test = [
     "sphinx-rtd-theme",
     "numpydoc",
 ]
+bilby = [
+    "bilby@git+https://github.com/colmtalbot/bilby.git@bilback",
+    "ripplegw",
+    "plum-dispatch",
+    "astropy",
+    "gwpy",
+    "array-api-compat",
+    "interpax",
+]
+dev = [
+    "ipython",
+    "ruff",
+    "pre-commit",
+]
 
 [project.entry-points."bilby.samplers"]
 jaxted = "jaxted.bilby:Jaxted"
