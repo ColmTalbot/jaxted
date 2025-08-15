@@ -152,7 +152,7 @@ def mutate(
         **args,
     )
 
-    state = (rng_key, samples, proposal_points, ln_likelihoods, level, jnp.array(0))
+    state = (rng_key, samples, proposal_points, ln_likelihoods, level, jnp.zeros(ln_likelihoods.shape))
     (rng_key, samples, _, ln_likelihoods, _, total_accepted) = jax.lax.fori_loop(
         jnp.array(0),
         nsteps,
@@ -173,5 +173,5 @@ def new_step(ii, state, likelihood_fn, ln_prior_fn, boundary_fn, transform, step
         transform=transform,
         **args,
     )
-    n_accept += accept.mean()
+    n_accept += accept
     return (rng_key, samples, proposal_points, ln_likelihoods, level, n_accept)
