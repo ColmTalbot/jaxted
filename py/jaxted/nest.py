@@ -2,6 +2,7 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 from jax.scipy.special import logsumexp
 from jax_tqdm import scan_tqdm
 
@@ -17,19 +18,32 @@ __all__ = [
 ]
 
 
-@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "nsteps"))
-def body_func(state, level, likelihood_fn, ln_prior_fn, boundary_fn, nsteps, **args):
-    return outer_step(
-        state,
-        likelihood_fn=likelihood_fn,
-        ln_prior_fn=ln_prior_fn,
-        boundary_fn=boundary_fn,
-        nsteps=nsteps,
-        **args,
-    )
+def traceplot(samples, plotdir=None, label=None):
+    _, axes = plt.subplots(nrows=len(samples), figsize=(6, 4 * len(samples)), sharex=True)
+    if "ln_weights" in samples:
+        keep = jnp.isfinite(samples["ln_weights"])
+    else:
+        keep = ()
+    for ii, (key, values) in enumerate(samples.items()):
+        axes[ii].plot(values[keep], linestyle="None", marker="o", markersize=2, alpha=0.5)
+        axes[ii].set_ylabel(key)
+    plt.tight_layout()
+    if plotdir is not None:
+        plt.savefig(f"{plotdir}/{label}_traceplot.png")
+    plt.close()
 
 
-@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "sample_prior", "boundary_fn", "nsteps", "dlogz", "sub_iterations", "nlive"))
+def plot_insertion_indices(*args, plotdir=None):
+    _, axes = plt.subplots(nrows=2, figsize=(6, 8))
+    for indices in args:
+        indices = indices[indices >= 0]
+        axes[0].hist(indices, bins=30, density=True, histtype="step")
+        axes[1].plot(indices, linestyle="None", marker="o", markersize=2, alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(f"{plotdir}/insertion.png")
+    plt.close()
+
+
 def run_nest(
     likelihood_fn,
     ln_prior_fn,
@@ -48,7 +62,6 @@ def run_nest(
 ):
     state = initialize(likelihood_fn, sample_prior, transform, nlive, rseed, **args)
 
-    # @scan_tqdm(sub_iterations, print_rate=1)
     def body_func(state, level, proposal, adapt, naccept, **args):
         return outer_step(
             state,
@@ -59,6 +72,7 @@ def run_nest(
             proposal=proposal,
             adapt=adapt,
             naccept=naccept,
+            **args,
         )
 
     state += (10,)
@@ -87,16 +101,12 @@ def run_nest(
         print(f"Distance insertion test p-value: {pvalue:.4f}")
 
         if plotdir is not None:
-            import matplotlib.pyplot as plt
-            plt.figure(figsize=(6, 5))
-            indices = output["insertion_index"]
-            indices = indices[indices >= 0]
-            plt.hist(indices, bins=30, density=True, histtype="step")
-            indices = output["distance_insertion_index"]
-            indices = indices[indices >= 0]
-            plt.hist(indices, bins=30, density=True, histtype="step")
-            plt.savefig(f"{plotdir}/insertion.png")
-            plt.close()
+            plot_insertion_indices(
+                output["insertion_index"],
+                output["distance_insertion_index"],
+                plotdir=plotdir,
+            )
+            traceplot(output, plotdir=plotdir, label="intermediate")
 
         state, new_output = jax.lax.scan(
             scan_tqdm(sub_iterations, print_rate=1)(
@@ -116,6 +126,13 @@ def run_nest(
     rng_key, ln_normalization, _, _, samples, ln_likelihoods, _ = state
     ln_post_weights = ln_normalization + ln_likelihoods - jnp.log(nlive)
 
+    if plotdir is not None:
+        plot_insertion_indices(
+            output["insertion_index"],
+            output["distance_insertion_index"],
+            plotdir=plotdir,
+        )
+
     pvalue = insertion_index_test(output.pop("insertion_index"), nlive)
     print(f"Final likelihood insertion test p-value: {pvalue:.4f}")
     pvalue = insertion_index_test(output.pop("distance_insertion_index"), nlive)
@@ -123,10 +140,10 @@ def run_nest(
 
     output["ln_weights"] = jnp.concatenate([output["ln_weights"], ln_post_weights])
     output["ln_likelihood"] = jnp.concatenate([output["ln_likelihood"], ln_likelihoods])
-    # if "ln_l" in samples:
-    # del samples["ln_l"]
     for key in samples:
         output[key] = jnp.concatenate([output[key], samples[key]])
+
+    traceplot(output, plotdir=plotdir, label="final")
 
     ln_weights = output["ln_weights"]
     ln_evidence = logsumexp(ln_weights)
@@ -134,18 +151,14 @@ def run_nest(
     variance = jnp.exp(ln_variance - 2 * ln_evidence)
     ln_evidence_err = variance**0.5
 
-    # ln_weights -= jnp.max(ln_weights)
-    # keep = ln_weights > jnp.log(jax.random.uniform(rng_key, ln_weights.shape))
-    # output = {key: values[keep] for key, values in output.items()}
-
     return ln_evidence, ln_evidence_err, output
 
 
 def null_func(args):
     state, _ = args
     _, _, _, _, samples, _, _ = state
-    output = {key: samples[key][0] for key in samples}
-    output["ln_likelihood"] = jnp.nan
+    output = {key: jnp.nan for key in samples}
+    output["ln_likelihood"] = -jnp.inf
     output["ln_weights"] = -jnp.inf
     output["insertion_index"] = -1
     output["distance_insertion_index"] = -1
@@ -218,10 +231,11 @@ def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, propos
         proposal=proposal,
         **args,
     )
+    state = (rng_key,) + state[1:]
     if adapt:
-        new_nsteps = nsteps * (1 + naccept / total_accepted) / 2
+        new_nsteps = nsteps * (1 + naccept / total_accepted.mean()) / 2
         state = state[:-1] + (new_nsteps.astype(int),)
-        jax.debug.print("{} {}", total_accepted, new_nsteps)
+        jax.debug.print("{} {} {}", total_accepted.mean(), total_accepted.std(), new_nsteps)
     new_samples["ln_likelihood"] = new_ln_likelihoods
     return jax.lax.scan(
         digest,
