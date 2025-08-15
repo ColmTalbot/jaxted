@@ -30,11 +30,12 @@ def run_nest(
     rseed=20,
     dlogz=0.1,
     plotdir=None,
+    naccept=60,
 ):
     state = initialize(likelihood_fn, sample_prior, transform, nlive, rseed)
 
     # @scan_tqdm(sub_iterations, print_rate=1)
-    def body_func(state, level, proposal, adapt):
+    def body_func(state, level, proposal, adapt, naccept):
         return outer_step(
             state,
             likelihood_fn=likelihood_fn,
@@ -43,13 +44,14 @@ def run_nest(
             transform=transform,
             proposal=proposal,
             adapt=adapt,
+            naccept=naccept,
         )
 
     state += (10,)
 
     state, output = jax.lax.scan(
         scan_tqdm(sub_iterations, print_rate=1)(
-            partial(body_func, proposal=uniform, adapt=False)
+            partial(body_func, proposal=uniform, adapt=False, naccept=naccept)
         ),
         state, jnp.arange(sub_iterations)
     )
@@ -84,7 +86,7 @@ def run_nest(
 
         state, new_output = jax.lax.scan(
             scan_tqdm(sub_iterations, print_rate=1)(
-                partial(body_func, proposal=differential_evolution, adapt=True)
+                partial(body_func, proposal=differential_evolution, adapt=True, naccept=naccept)
             ),
             state, jnp.arange(sub_iterations)
         )
@@ -182,7 +184,7 @@ def digest(state, proposed):
 @partial(
     jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "proposal", "adapt")
 )
-def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, proposal, adapt):
+def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, proposal, adapt, naccept):
     rng_key, _, _, _, samples, ln_likelihoods, nsteps = state
     proposal_points = {key: samples[key].copy() for key in samples}
     level = jnp.min(ln_likelihoods)
@@ -200,7 +202,7 @@ def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, propos
         proposal=proposal,
     )
     if adapt:
-        new_nsteps = nsteps * (1 + 60 / total_accepted) / 2
+        new_nsteps = nsteps * (1 + naccept / total_accepted) / 2
         state = state[:-1] + (new_nsteps.astype(int),)
         jax.debug.print("{} {}", total_accepted, new_nsteps)
     new_samples["ln_likelihood"] = new_ln_likelihoods

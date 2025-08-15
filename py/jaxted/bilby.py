@@ -56,7 +56,13 @@ class Jaxted(Sampler):
     sampler_name = "jaxted"
     sampling_seed_key = "rseed"
     default_kwargs = dict(
-        method="nest", nsteps=500, nlive=500, rseed=1, alpha=np.exp(-1), sub_iterations=10
+        method="nest",
+        nsteps=500,
+        nlive=500,
+        rseed=1,
+        alpha=np.exp(-1),
+        sub_iterations=10,
+        naccept=60,
     )
 
     def _time_likelihood(self, n_evaluations=100):
