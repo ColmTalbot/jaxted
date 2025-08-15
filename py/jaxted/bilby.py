@@ -81,6 +81,9 @@ class Jaxted(Sampler):
             sampler = run_nssmc_anssmc
         else:
             raise ValueError("Unknown sampling method")
+
+        os.makedirs(self.outdir, exist_ok=True)
+
         ln_z, ln_zerr, samples = sampler(
             likelihood_fn=likelihood_fn,
             ln_prior_fn=ln_prior_fn,
@@ -99,7 +102,13 @@ class Jaxted(Sampler):
         return self.result
 
     def create_result(self, samples, ln_z, ln_zerr):
-        self.result.samples = samples
+        ln_weights = samples["ln_weights"]
+        ln_weights -= jnp.nanmax(ln_weights)
+        keep = ln_weights > jnp.log(jnp.array(np.random.uniform(0, 1, ln_weights.shape)))
+        posterior = {key: values[keep] for key, values in samples.items()}
+
+        self.result.nested_samples = samples
+        self.result.samples = posterior
         self.result.log_evidence = float(ln_z)
         self.result.log_evidence_err = ln_zerr
         self.result.log_noise_evidence = self.likelihood.noise_log_likelihood()
@@ -143,5 +152,9 @@ def _ln_prior_fn(parameters):
     ])), axis=0)
 
 
-def sample_unit(n_samples, keys):
-    return {key: jnp.array(np.random.uniform(0, 1, n_samples)) for key in keys}
+def sample_unit(n_samples, keys, rng_key=None):
+    if rng_key is not None:
+        vals = jax.random.uniform(rng_key, (n_samples, len(keys)))
+    else:
+        vals = np.random.uniform(0, 1, (n_samples, len(keys)))
+    return {key: jnp.array(vals[:, i]) for i, key in enumerate(keys)}
