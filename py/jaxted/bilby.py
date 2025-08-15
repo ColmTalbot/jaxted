@@ -3,6 +3,8 @@ from functools import partial
 
 import jax
 import numpy as np
+from bilby.core.likelihood import Likelihood
+from bilby.core.prior import PriorDict
 from bilby.core.sampler.base_sampler import Sampler
 from bilby.compat.jax import generic_bilby_likelihood_function
 
@@ -54,7 +56,7 @@ class Jaxted(Sampler):
     sampler_name = "jaxted"
     sampling_seed_key = "rseed"
     default_kwargs = dict(
-        method="nest", nsteps=500, nlive=500, rseed=1, alpha=np.exp(-1)
+        method="nest", nsteps=500, nlive=500, rseed=1, alpha=np.exp(-1), sub_iterations=10
     )
 
     def _time_likelihood(self, n_evaluations=100):
@@ -108,7 +110,7 @@ class Jaxted(Sampler):
         super()._setup_pool()
 
 
-def jaxted_inputs_from_bilby(likelihood, priors, use_ratio=False):
+def jaxted_inputs_from_bilby(likelihood: Likelihood, priors: PriorDict, use_ratio: bool = False):
     likelihood_fn = jax.vmap(
         partial(
             generic_bilby_likelihood_function,
@@ -118,8 +120,9 @@ def jaxted_inputs_from_bilby(likelihood, priors, use_ratio=False):
     )
     boundary_fn = partial(apply_boundary, priors=priors)
     ln_prior_fn = _ln_prior_fn
+
     sample_fn = partial(sample_unit, keys=tuple(priors.keys()))
-    transform = partial(rescale, priors=priors)
+    transform = partial(rescale, priors=priors, keys=tuple(priors.non_fixed_keys))
     return likelihood_fn, ln_prior_fn, sample_fn, boundary_fn, transform
 
 
