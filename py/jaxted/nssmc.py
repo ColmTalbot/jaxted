@@ -25,7 +25,10 @@ def initialize(likelihood_fn, sample_prior, transform, nlive, rseed, **args):
     return rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods
 
 
-@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform"))
+@partial(
+    jax.jit,
+    static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform"),
+)
 def uniform(
     rng_key,
     samples,
@@ -53,19 +56,26 @@ def uniform(
         transformed = proposed
 
     proposed_ln_likelihoods = likelihood_fn(transformed, **args)
-    proposed_priors = ln_prior_fn(proposed, **args) + jnp.log(proposed_ln_likelihoods > level)
+    proposed_priors = ln_prior_fn(proposed, **args) + jnp.log(
+        proposed_ln_likelihoods > level
+    )
 
     mh_ratio = proposed_priors - old_priors
     accept = mh_ratio > jnp.log(jax.random.uniform(subkey, mh_ratio.shape))
 
     for key in samples:
         samples[key] = jax.vmap(jnp.where)(accept, proposed[key], samples[key])
-    ln_likelihoods = jnp.where(accept, proposed_ln_likelihoods, level * jnp.ones(ln_likelihoods.shape))
+    ln_likelihoods = jnp.where(
+        accept, proposed_ln_likelihoods, level * jnp.ones(ln_likelihoods.shape)
+    )
 
     return rng_key, proposed, ln_likelihoods, accept
 
 
-@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform"))
+@partial(
+    jax.jit,
+    static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform"),
+)
 def differential_evolution(
     rng_key,
     samples,
@@ -90,7 +100,7 @@ def differential_evolution(
         False,
         valid_points / valid_points.sum(),
     ).T
-    scale = 2.38 / (2 * len(samples))**0.5 / 4
+    scale = 2.38 / (2 * len(samples)) ** 0.5 / 4
     deltas = jnp.where(
         jax.random.choice(subkey_3, 2, (len(ln_likelihoods),)).astype(bool),
         jax.random.gamma(subkey_2, 4, shape=(len(ln_likelihoods),)) * scale,
@@ -113,7 +123,9 @@ def differential_evolution(
         transformed = proposed
 
     proposed_ln_likelihoods = likelihood_fn(transformed, **args)
-    proposed_priors = ln_prior_fn(proposed, **args) + jnp.log(proposed_ln_likelihoods > level)
+    proposed_priors = ln_prior_fn(proposed, **args) + jnp.log(
+        proposed_ln_likelihoods > level
+    )
 
     mh_ratio = proposed_priors - old_priors
     accept = mh_ratio > jnp.log(jax.random.uniform(subkey_4, mh_ratio.shape))
@@ -126,7 +138,14 @@ def differential_evolution(
 
 
 @partial(
-    jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "proposal")
+    jax.jit,
+    static_argnames=(
+        "likelihood_fn",
+        "ln_prior_fn",
+        "boundary_fn",
+        "transform",
+        "proposal",
+    ),
 )
 def mutate(
     rng_key,
@@ -152,7 +171,14 @@ def mutate(
         **args,
     )
 
-    state = (rng_key, samples, proposal_points, ln_likelihoods, level, jnp.zeros(ln_likelihoods.shape))
+    state = (
+        rng_key,
+        samples,
+        proposal_points,
+        ln_likelihoods,
+        level,
+        jnp.zeros(ln_likelihoods.shape),
+    )
     (rng_key, samples, _, ln_likelihoods, _, total_accepted) = jax.lax.fori_loop(
         jnp.array(0),
         nsteps,
@@ -162,8 +188,26 @@ def mutate(
     return rng_key, samples, ln_likelihoods, total_accepted
 
 
-@partial(jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "step_fn"))
-def new_step(ii, state, likelihood_fn, ln_prior_fn, boundary_fn, transform, step_fn=differential_evolution, **args):
+@partial(
+    jax.jit,
+    static_argnames=(
+        "likelihood_fn",
+        "ln_prior_fn",
+        "boundary_fn",
+        "transform",
+        "step_fn",
+    ),
+)
+def new_step(
+    ii,
+    state,
+    likelihood_fn,
+    ln_prior_fn,
+    boundary_fn,
+    transform,
+    step_fn=differential_evolution,
+    **args,
+):
     _, _, proposal_points, _, level, n_accept = state
     rng_key, samples, ln_likelihoods, accept = step_fn(
         *state[:-1],

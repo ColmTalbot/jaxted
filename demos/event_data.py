@@ -9,6 +9,7 @@ between luminosity distances of 100Mpc and 5Gpc, the cosmology is Planck15.
 
 We optionally use ripple waveforms and a JIT-compiled likelihood.
 """
+
 import os
 import bilby
 import numpy as np
@@ -34,10 +35,12 @@ def setup_cbc_likelihood(use_jax=True, model="regular"):
     ifo = ifos[0]
     frequency_array, psd_array = np.genfromtxt("L1_psd.txt").T
     ifo.power_spectral_density = bilby.gw.detector.psd.PowerSpectralDensity(
-        frequency_array=frequency_array, psd_array=psd_array,
+        frequency_array=frequency_array,
+        psd_array=psd_array,
     )
     if os.path.exists("L1_data.txt"):
         from gwpy.timeseries import TimeSeries
+
         data = TimeSeries.read("L1_data.txt")
         ifo.set_strain_data_from_gwpy_timeseries(data)
     else:
@@ -88,9 +91,15 @@ def setup_cbc_likelihood(use_jax=True, model="regular"):
 
     priors = bilby.gw.prior.BBHPriorDict(aligned_spin=False)
     del priors["mass_1"], priors["mass_2"]
-    priors["L1_time"] = bilby.core.prior.Uniform(1369419318.6, 1369419318.8, latex_label="$t_{L}$")
-    priors["chirp_mass"] = bilby.core.prior.Uniform(2.0214, 2.0331, latex_label="$\\mathcal{M}$")
-    priors["mass_ratio"] = bilby.core.prior.Uniform(0.125, 1.0, boundary="periodic", latex_label="$q$")
+    priors["L1_time"] = bilby.core.prior.Uniform(
+        1369419318.6, 1369419318.8, latex_label="$t_{L}$"
+    )
+    priors["chirp_mass"] = bilby.core.prior.Uniform(
+        2.0214, 2.0331, latex_label="$\\mathcal{M}$"
+    )
+    priors["mass_ratio"] = bilby.core.prior.Uniform(
+        0.125, 1.0, boundary="periodic", latex_label="$q$"
+    )
     priors["luminosity_distance"].minimum = 1
     priors["luminosity_distance"].maximum = 500
     priors["a_2"].maximum = 0.05
@@ -122,13 +131,13 @@ def setup_cbc_likelihood(use_jax=True, model="regular"):
 
 
 if __name__ == "__main__":
-
     likelihood, priors = setup_cbc_likelihood(model="relbin")
     result = bilby.run_sampler(
         likelihood,
         priors,
         nlive=100,
-        nsteps=40,
+        nsteps=2000,
+        naccept=50,
         sampler="jaxted",
         outdir="230529",
         label="jaxted",

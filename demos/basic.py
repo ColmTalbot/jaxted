@@ -9,7 +9,7 @@ We need to provide three functions:
 - a function that takes a dictionary of values for the parameters and returns
   the log-prior at each point.
 - a function that samples from the prior for initialization.
-    
+
 We can then call :code:`run_nest` or :code:`run_nssmc_anssmc` to perform
 the sampling.
 """
@@ -25,7 +25,7 @@ def ln_likelihood_fn(parameters):
     """
     A vectorized likelihood function that takes as input a dictionary of
     values for the parameters.
-    
+
     Parameters
     ==========
     parameters: dict[str, array-like]

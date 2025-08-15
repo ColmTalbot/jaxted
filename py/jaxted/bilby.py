@@ -69,8 +69,10 @@ class Jaxted(Sampler):
         return np.nan
 
     def run_sampler(self):
-        likelihood_fn, ln_prior_fn, sample_fn, boundary_fn, transform = jaxted_inputs_from_bilby(
-            self.likelihood, self.priors, use_ratio=self.use_ratio
+        likelihood_fn, ln_prior_fn, sample_fn, boundary_fn, transform = (
+            jaxted_inputs_from_bilby(
+                self.likelihood, self.priors, use_ratio=self.use_ratio
+            )
         )
 
         method = self.kwargs.pop("method", "nest")
@@ -93,10 +95,10 @@ class Jaxted(Sampler):
             plotdir=self.outdir,
             **self.kwargs,
         )
-        samples.update(transform({
-            key: samples[key] for key in self.search_parameter_keys
-        }))
-        
+        samples.update(
+            transform({key: samples[key] for key in self.search_parameter_keys})
+        )
+
         self.create_result(samples, ln_z, ln_zerr)
         self.kwargs["method"] = method
         return self.result
@@ -104,7 +106,9 @@ class Jaxted(Sampler):
     def create_result(self, samples, ln_z, ln_zerr):
         ln_weights = samples["ln_weights"]
         ln_weights -= jnp.nanmax(ln_weights)
-        keep = ln_weights > jnp.log(jnp.array(np.random.uniform(0, 1, ln_weights.shape)))
+        keep = ln_weights > jnp.log(
+            jnp.array(np.random.uniform(0, 1, ln_weights.shape))
+        )
         posterior = {key: values[keep] for key, values in samples.items()}
 
         self.result.nested_samples = samples
@@ -126,7 +130,9 @@ class Jaxted(Sampler):
         super()._setup_pool()
 
 
-def jaxted_inputs_from_bilby(likelihood: Likelihood, priors: PriorDict, use_ratio: bool = False):
+def jaxted_inputs_from_bilby(
+    likelihood: Likelihood, priors: PriorDict, use_ratio: bool = False
+):
     likelihood_fn = jax.vmap(
         partial(
             generic_bilby_likelihood_function,
@@ -146,10 +152,10 @@ import jax.numpy as jnp
 
 
 def _ln_prior_fn(parameters):
-    return jnp.sum(jnp.log(jnp.array([
-        (val >= 0) * (val <= 1)
-        for val in parameters.values()
-    ])), axis=0)
+    return jnp.sum(
+        jnp.log(jnp.array([(val >= 0) * (val <= 1) for val in parameters.values()])),
+        axis=0,
+    )
 
 
 def sample_unit(n_samples, keys, rng_key=None):

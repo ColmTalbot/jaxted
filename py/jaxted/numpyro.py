@@ -1,14 +1,10 @@
-from functools import partial
-
 import jax
 import jax.numpy as jnp
 import numpy as np
 from numpyro.infer.util import log_likelihood, trace, substitute, soft_vmap, Predictive
 
 
-def log_prior(
-    model, posterior_samples, *args, parallel=False, batch_ndims=1, **kwargs
-):
+def log_prior(model, posterior_samples, *args, parallel=False, batch_ndims=1, **kwargs):
     """
     Returns log prior at observation nodes of model, given samples of all latent variables.
     This is a minimally edited version of `numpyro.infer.util.log_likelihood`.
@@ -78,13 +74,17 @@ def jaxted_inputs_from_numpyro(model, *args, **kwargs):
     """
 
     def likelihood_fn(x, *new_args, **new_kwargs):
-        lnls = sum(log_likelihood(model, x, *new_args, *args, **new_kwargs, **kwargs).values())
+        lnls = sum(
+            log_likelihood(model, x, *new_args, *args, **new_kwargs, **kwargs).values()
+        )
         while lnls.ndim > 1:
             lnls = lnls.sum(axis=-1)
         return lnls
 
     def ln_prior_fn(x, *new_args, **new_kwargs):
-        lnps = sum(log_prior(model, x, *new_args, *args, **new_kwargs, **kwargs).values())
+        lnps = sum(
+            log_prior(model, x, *new_args, *args, **new_kwargs, **kwargs).values()
+        )
         while lnps.ndim > 1:
             lnps = lnps.sum(axis=-1)
         return lnps

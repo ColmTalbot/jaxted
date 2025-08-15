@@ -7,7 +7,7 @@ from jax.scipy.special import logsumexp
 from jax_tqdm import scan_tqdm
 
 from .nssmc import initialize, mutate
-from .utils import logsubexp, while_tqdm
+from .utils import logsubexp
 
 __all__ = ["anssmc", "nssmc", "smc_step", "resample", "run_nssmc_anssmc"]
 
@@ -117,7 +117,13 @@ def anssmc(
 
         inner_state = state[:-2]
         inner_state, _ = smc_step(
-            *inner_state, level, likelihood_fn, ln_prior_fn, boundary_fn, transform, nsteps=nsteps
+            *inner_state,
+            level,
+            likelihood_fn,
+            ln_prior_fn,
+            boundary_fn,
+            transform,
+            nsteps=nsteps,
         )
         return inner_state + (levels, iteration)
 
@@ -198,14 +204,22 @@ def nssmc(
     def body_func(state, idx):
         level = levels[idx]
         return smc_step(
-            *state, level, likelihood_fn, ln_prior_fn, boundary_fn, transform, nsteps=nsteps
+            *state,
+            level,
+            likelihood_fn,
+            ln_prior_fn,
+            boundary_fn,
+            transform,
+            nsteps=nsteps,
         )
 
     state = initialize(likelihood_fn, sample_prior, transform, nlive, rseed)
     state, output = jax.lax.scan(body_func, state, jnp.arange(len(levels)))
     rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = state
 
-    output = {key: value.reshape((-1,) + value.shape[2:]) for key, value in output.items()}
+    output = {
+        key: value.reshape((-1,) + value.shape[2:]) for key, value in output.items()
+    }
 
     ln_post_weights = ln_normalization + ln_likelihoods
     for key in samples:
@@ -230,7 +244,14 @@ def nssmc(
 
 
 @partial(
-    jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "nsteps")
+    jax.jit,
+    static_argnames=(
+        "likelihood_fn",
+        "ln_prior_fn",
+        "boundary_fn",
+        "transform",
+        "nsteps",
+    ),
 )
 def smc_step(
     rng_key,
