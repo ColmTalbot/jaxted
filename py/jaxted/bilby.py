@@ -2,6 +2,7 @@ import os
 from functools import partial
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 from bilby.core.likelihood import Likelihood
 from bilby.core.prior import PriorDict
@@ -146,9 +147,6 @@ def jaxted_inputs_from_bilby(
     sample_fn = partial(sample_unit, keys=tuple(priors.keys()))
     transform = partial(rescale, priors=priors, keys=tuple(priors.non_fixed_keys))
     return likelihood_fn, ln_prior_fn, sample_fn, boundary_fn, transform
-
-
-import jax.numpy as jnp
 
 
 def _ln_prior_fn(parameters):
