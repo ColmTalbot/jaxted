@@ -6,7 +6,12 @@ import matplotlib.pyplot as plt
 from jax.scipy.special import logsumexp
 from jax_tqdm import scan_tqdm
 
-from .utils import distance_insertion_index, insertion_index_test, logsubexp, likelihood_insertion_index
+from .utils import (
+    distance_insertion_index,
+    insertion_index_test,
+    logsubexp,
+    likelihood_insertion_index,
+)
 from .nssmc import initialize, mutate, differential_evolution, uniform
 
 __all__ = [
@@ -19,13 +24,17 @@ __all__ = [
 
 
 def traceplot(samples, plotdir=None, label=None):
-    _, axes = plt.subplots(nrows=len(samples), figsize=(6, 4 * len(samples)), sharex=True)
+    _, axes = plt.subplots(
+        nrows=len(samples), figsize=(6, 4 * len(samples)), sharex=True
+    )
     if "ln_weights" in samples:
         keep = jnp.isfinite(samples["ln_weights"])
     else:
         keep = ()
     for ii, (key, values) in enumerate(samples.items()):
-        axes[ii].plot(values[keep], linestyle="None", marker="o", markersize=2, alpha=0.5)
+        axes[ii].plot(
+            values[keep], linestyle="None", marker="o", markersize=2, alpha=0.5
+        )
         axes[ii].set_ylabel(key)
     plt.tight_layout()
     if plotdir is not None:
@@ -81,11 +90,14 @@ def run_nest(
         scan_tqdm(sub_iterations, print_rate=1)(
             partial(body_func, proposal=uniform, adapt=False, naccept=naccept, **args)
         ),
-        state, jnp.arange(sub_iterations)
+        state,
+        jnp.arange(sub_iterations),
     )
     _, ln_normalization, ln_evidence, _, _, ln_likelihoods, _ = state
     dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
-    output = {key: values.reshape((-1,) + values.shape[2:]) for key, values in output.items()}
+    output = {
+        key: values.reshape((-1,) + values.shape[2:]) for key, values in output.items()
+    }
 
     state = state[:-1] + (nsteps,)
 
@@ -110,16 +122,26 @@ def run_nest(
 
         state, new_output = jax.lax.scan(
             scan_tqdm(sub_iterations, print_rate=1)(
-                partial(body_func, proposal=differential_evolution, adapt=True, naccept=naccept, **args)
+                partial(
+                    body_func,
+                    proposal=differential_evolution,
+                    adapt=True,
+                    naccept=naccept,
+                    **args,
+                )
             ),
-            state, jnp.arange(sub_iterations)
+            state,
+            jnp.arange(sub_iterations),
         )
         _, ln_normalization, ln_evidence, _, _, ln_likelihoods, _ = state
         dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
         output = {
-            key: jnp.concatenate([output[key], new_output[key].reshape(
-                (-1,) + new_output[key].shape[2:]
-            )])
+            key: jnp.concatenate(
+                [
+                    output[key],
+                    new_output[key].reshape((-1,) + new_output[key].shape[2:]),
+                ]
+            )
             for key in output
         }
 
@@ -168,7 +190,15 @@ def null_func(args):
 def replace_func(args):
     state, proposed = args
     idx, proposed = proposed
-    rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods, nsteps = state
+    (
+        rng_key,
+        ln_normalization,
+        ln_evidence,
+        ln_variance,
+        samples,
+        ln_likelihoods,
+        nsteps,
+    ) = state
     level = jnp.min(ln_likelihoods)
     replace = jnp.argmin(ln_likelihoods)
 
@@ -185,7 +215,9 @@ def replace_func(args):
     ln_l = proposed.pop("ln_likelihood")
     output["insertion_index"] = likelihood_insertion_index(ln_likelihoods, ln_l)
     start = {key: samples[key][idx] for key in samples}
-    output["distance_insertion_index"] = distance_insertion_index(samples, start, proposed)
+    output["distance_insertion_index"] = distance_insertion_index(
+        samples, start, proposed
+    )
     ln_likelihoods = ln_likelihoods.at[replace].set(ln_l)
 
     for key in samples:
@@ -211,9 +243,27 @@ def digest(state, proposed):
 
 
 @partial(
-    jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "proposal", "adapt")
+    jax.jit,
+    static_argnames=(
+        "likelihood_fn",
+        "ln_prior_fn",
+        "boundary_fn",
+        "transform",
+        "proposal",
+        "adapt",
+    ),
 )
-def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, proposal, adapt, naccept, **args):
+def outer_step(
+    state,
+    likelihood_fn,
+    ln_prior_fn,
+    boundary_fn,
+    transform,
+    proposal,
+    adapt,
+    naccept,
+    **args,
+):
     rng_key, _, _, _, samples, ln_likelihoods, nsteps = state
     proposal_points = {key: samples[key].copy() for key in samples}
     level = jnp.min(ln_likelihoods)
@@ -235,7 +285,9 @@ def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, propos
     if adapt:
         new_nsteps = nsteps * (1 + naccept / total_accepted.mean()) / 2
         state = state[:-1] + (new_nsteps.astype(int),)
-        jax.debug.print("{} {} {}", total_accepted.mean(), total_accepted.std(), new_nsteps)
+        jax.debug.print(
+            "{} {} {}", total_accepted.mean(), total_accepted.std(), new_nsteps
+        )
     new_samples["ln_likelihood"] = new_ln_likelihoods
     return jax.lax.scan(
         digest,
