@@ -6,7 +6,7 @@ from jax.scipy.special import logsumexp
 from jax_tqdm import scan_tqdm
 
 from .utils import distance_insertion_index, insertion_index_test, logsubexp, likelihood_insertion_index
-from .nssmc import initialize, mutate
+from .nssmc import initialize, mutate, differential_evolution, uniform
 
 __all__ = [
     "digest",
@@ -32,27 +32,44 @@ def run_nest(
 ):
     state = initialize(likelihood_fn, sample_prior, transform, nlive, rseed)
 
-    @scan_tqdm(sub_iterations, print_rate=1)
-    def body_func(state, level):
+    # @scan_tqdm(sub_iterations, print_rate=1)
+    def body_func(state, level, proposal, adapt):
         return outer_step(
             state,
             likelihood_fn=likelihood_fn,
             ln_prior_fn=ln_prior_fn,
             boundary_fn=boundary_fn,
             transform=transform,
-            nsteps=nsteps,
+            proposal=proposal,
+            adapt=adapt,
         )
 
-    state, output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
-    _, ln_normalization, ln_evidence, _, _, ln_likelihoods = state
+    state += (10,)
+
+    state, output = jax.lax.scan(
+        scan_tqdm(sub_iterations, print_rate=1)(
+            partial(body_func, proposal=uniform, adapt=False)
+        ),
+        state, jnp.arange(sub_iterations)
+    )
+    _, ln_normalization, ln_evidence, _, _, ln_likelihoods, _ = state
     dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
     output = {key: values.reshape((-1,) + values.shape[2:]) for key, values in output.items()}
+
+    state = state[:-1] + (nsteps,)
+
     while dlogz_ > dlogz:
         print(
-            f"dlogz = {dlogz_:.2f} > {dlogz:.2f} running again ({ln_evidence:.2f}, {ln_normalization:.2f})"
+            f"dlogz = {dlogz_:.2f} > {dlogz:.2f} running again "
+            f"(ln Z = {ln_evidence:.2f}, ln X = {ln_normalization:.2f})"
         )
-        state, new_output = jax.lax.scan(body_func, state, jnp.arange(sub_iterations))
-        _, ln_normalization, ln_evidence, _, _, ln_likelihoods = state
+        state, new_output = jax.lax.scan(
+            scan_tqdm(sub_iterations, print_rate=1)(
+                partial(body_func, proposal=differential_evolution, adapt=True)
+            ),
+            state, jnp.arange(sub_iterations)
+        )
+        _, ln_normalization, ln_evidence, _, _, ln_likelihoods, _ = state
         dlogz_ = jnp.log1p(ln_normalization + jnp.max(ln_likelihoods) - ln_evidence)
         output = {
             key: jnp.concatenate([output[key], new_output[key].reshape(
@@ -61,14 +78,13 @@ def run_nest(
             for key in output
         }
 
-    rng_key, ln_normalization, _, _, samples, ln_likelihoods = state
+    rng_key, ln_normalization, _, _, samples, ln_likelihoods, _ = state
     ln_post_weights = ln_normalization + ln_likelihoods - jnp.log(nlive)
 
-    insertion_indices = output.pop("insertion_index")
-    pvalue = insertion_index_test(insertion_indices, nlive)
-    print(f"Likelihood insertion test p-value: {pvalue:.4f}")
+    pvalue = insertion_index_test(output.pop("insertion_index"), nlive)
+    print(f"Final likelihood insertion test p-value: {pvalue:.4f}")
     pvalue = insertion_index_test(output.pop("distance_insertion_index"), nlive)
-    print(f"Distance insertion test p-value: {pvalue:.4f}")
+    print(f"Final distance insertion test p-value: {pvalue:.4f}")
 
     output["ln_weights"] = jnp.concatenate([output["ln_weights"], ln_post_weights])
     output["ln_likelihood"] = jnp.concatenate([output["ln_likelihood"], ln_likelihoods])
@@ -90,7 +106,7 @@ def run_nest(
 
 def null_func(args):
     state, _ = args
-    _, _, _, _, samples, _ = state
+    _, _, _, _, samples, _, _ = state
     output = {key: samples[key][0] for key in samples}
     output["ln_likelihood"] = jnp.nan
     output["ln_weights"] = -jnp.inf
@@ -102,7 +118,7 @@ def null_func(args):
 def replace_func(args):
     state, proposed = args
     idx, proposed = proposed
-    rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods = state
+    rng_key, ln_normalization, ln_evidence, ln_variance, samples, ln_likelihoods, nsteps = state
     level = jnp.min(ln_likelihoods)
     replace = jnp.argmin(ln_likelihoods)
 
@@ -132,22 +148,23 @@ def replace_func(args):
         ln_variance,
         samples,
         ln_likelihoods,
+        nsteps,
     )
     return state, output
 
 
 def digest(state, proposed):
     ln_l = proposed[1]["ln_likelihood"]
-    _, _, _, _, _, ln_likelihoods = state
+    _, _, _, _, _, ln_likelihoods, _ = state
     level = jnp.min(ln_likelihoods)
     return jax.lax.cond(ln_l > level, replace_func, null_func, (state, proposed))
 
 
 @partial(
-    jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "nsteps")
+    jax.jit, static_argnames=("likelihood_fn", "ln_prior_fn", "boundary_fn", "transform", "proposal", "adapt")
 )
-def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, nsteps):
-    rng_key, _, _, _, samples, ln_likelihoods = state
+def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, proposal, adapt):
+    rng_key, _, _, _, samples, ln_likelihoods, nsteps = state
     proposal_points = {key: samples[key].copy() for key in samples}
     level = jnp.min(ln_likelihoods)
     rng_key, new_samples, new_ln_likelihoods, total_accepted = mutate(
@@ -161,7 +178,12 @@ def outer_step(state, likelihood_fn, ln_prior_fn, boundary_fn, transform, nsteps
         boundary_fn=boundary_fn,
         transform=transform,
         nsteps=nsteps,
+        proposal=proposal,
     )
+    if adapt:
+        new_nsteps = nsteps * (1 + 60 / total_accepted) / 2
+        state = state[:-1] + (new_nsteps.astype(int),)
+        jax.debug.print("{} {}", total_accepted, new_nsteps)
     new_samples["ln_likelihood"] = new_ln_likelihoods
     return jax.lax.scan(
         digest,
