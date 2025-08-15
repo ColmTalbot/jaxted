@@ -1,3 +1,5 @@
+*.lock
+
 *.py[cod]
 _version.py
 __pycache__
