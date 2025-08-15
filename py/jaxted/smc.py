@@ -25,6 +25,7 @@ def anssmc(
     rseed=10,
     verbose=False,
     nsteps=500,
+    plotdir=None,
 ):
     """
     Run the adaptive nested sampling via sequential Monte Carlo algorithm as
@@ -150,6 +151,7 @@ def nssmc(
     nlive=1000,
     rseed=10,
     nsteps=500,
+    plotdir=None,
 ):
     """
     Run the nested sampling via sequential Monte Carlo algorithm as described
@@ -362,6 +364,7 @@ def run_nssmc_anssmc(
     nsteps=400,
     rseed=1,
     alpha=np.exp(-1),
+    plotdir=None,
 ):
     """
     Run the full adaptive nested sampling via sequential Monte Carlo algorithm
@@ -420,6 +423,7 @@ def run_nssmc_anssmc(
         nsteps=nsteps,
         rseed=rseed,
         alpha=alpha,
+        plotdir=plotdir,
     )
     if verbose:
         print(f"Adaptive stage complete, running with {len(levels)} levels")
@@ -433,4 +437,5 @@ def run_nssmc_anssmc(
         nlive=nlive,
         nsteps=nsteps,
         rseed=rseed,
+        plotdir=plotdir,
     )

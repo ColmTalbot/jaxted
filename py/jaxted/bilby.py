@@ -81,6 +81,7 @@ class Jaxted(Sampler):
             sample_prior=sample_fn,
             boundary_fn=boundary_fn,
             transform=transform,
+            plotdir=self.outdir,
             **self.kwargs,
         )
         samples.update(transform({

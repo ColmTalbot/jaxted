@@ -29,6 +29,7 @@ def run_nest(
     nsteps=500,
     rseed=20,
     dlogz=0.1,
+    plotdir=None,
 ):
     state = initialize(likelihood_fn, sample_prior, transform, nlive, rseed)
 
@@ -63,6 +64,24 @@ def run_nest(
             f"dlogz = {dlogz_:.2f} > {dlogz:.2f} running again "
             f"(ln Z = {ln_evidence:.2f}, ln X = {ln_normalization:.2f})"
         )
+
+        pvalue = insertion_index_test(output["insertion_index"], nlive)
+        print(f"Likelihood insertion test p-value: {pvalue:.4f}")
+        pvalue = insertion_index_test(output["distance_insertion_index"], nlive)
+        print(f"Distance insertion test p-value: {pvalue:.4f}")
+
+        if plotdir is not None:
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(6, 5))
+            indices = output["insertion_index"]
+            indices = indices[indices >= 0]
+            plt.hist(indices, bins=30, density=True, histtype="step")
+            indices = output["distance_insertion_index"]
+            indices = indices[indices >= 0]
+            plt.hist(indices, bins=30, density=True, histtype="step")
+            plt.savefig(f"{plotdir}/insertion.png")
+            plt.close()
+
         state, new_output = jax.lax.scan(
             scan_tqdm(sub_iterations, print_rate=1)(
                 partial(body_func, proposal=differential_evolution, adapt=True)
