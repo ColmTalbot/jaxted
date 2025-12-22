@@ -46,7 +46,9 @@ def uniform(
     rng_key, subkey, *sample_keys = jax.random.split(rng_key, len(samples) + 2)
 
     proposed = {
-        key: jax.random.uniform(sample_keys[ii], ln_likelihoods.shape).astype(values)
+        key: jax.random.uniform(sample_keys[ii], ln_likelihoods.shape).astype(
+            values.dtype
+        )
         for ii, (key, values) in enumerate(samples.items())
     }
 
@@ -112,7 +114,7 @@ def differential_evolution(
         diffs = proposal_points[key][prop_idxs[0]] - proposal_points[key][prop_idxs[1]]
         proposed[key] = jax.vmap(lambda sample, delta, diff: sample + delta * diff)(
             samples[key], deltas, diffs
-        ).astype(samples[key])
+        ).astype(samples[key].dtype)
 
     if boundary_fn is not None:
         proposed = boundary_fn(proposed)
