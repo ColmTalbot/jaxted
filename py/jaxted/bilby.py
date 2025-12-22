@@ -7,7 +7,6 @@ import numpy as np
 from bilby.core.likelihood import Likelihood
 from bilby.core.prior import PriorDict
 from bilby.core.sampler.base_sampler import Sampler
-from bilby.compat.jax import generic_bilby_likelihood_function
 
 from .nest import run_nest
 from .smc import run_nssmc_anssmc
@@ -134,18 +133,17 @@ class Jaxted(Sampler):
 def jaxted_inputs_from_bilby(
     likelihood: Likelihood, priors: PriorDict, use_ratio: bool = False
 ):
-    likelihood_fn = jax.vmap(
-        partial(
-            generic_bilby_likelihood_function,
-            likelihood,
-            use_ratio=use_ratio,
-        )
-    )
+    if use_ratio:
+        likelihood_fn = jax.vmap(likelihood.log_likelihood_ratio)
+    else:
+        likelihood_fn = jax.vmap(likelihood.log_likelihood)
     boundary_fn = partial(apply_boundary, priors=priors)
     ln_prior_fn = _ln_prior_fn
 
     sample_fn = partial(sample_unit, keys=tuple(priors.keys()))
-    transform = partial(rescale, priors=priors, keys=tuple(priors.non_fixed_keys))
+    transform = partial(
+        rescale, priors=priors, keys=tuple(priors.non_fixed_keys), include_fixed=True
+    )
     return likelihood_fn, ln_prior_fn, sample_fn, boundary_fn, transform
 
 

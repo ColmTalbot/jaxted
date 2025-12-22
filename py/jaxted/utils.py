@@ -64,8 +64,8 @@ def generic_bilby_ln_prior(samples, priors):
     return jnp.log(priors.prob(samples, axis=0))
 
 
-@partial(jax.jit, static_argnames=("priors", "keys"))
-def rescale(samples, priors, keys):
+@partial(jax.jit, static_argnames=("priors", "keys", "include_fixed"))
+def rescale(samples, priors, keys, include_fixed=False):
     """
     Wrapper to function to evaluate the log prior density from a :code:`Bilby`
     prior dictionary.
@@ -82,7 +82,17 @@ def rescale(samples, priors, keys):
     array-like
     """
     scaled = priors.rescale(keys, jnp.array([samples[key] for key in keys]))
-    return {key: scaled[ii] for ii, key in enumerate(keys)}
+    transformed = {key: scaled[ii] for ii, key in enumerate(keys)}
+
+    if include_fixed:
+        fixed_parameters = {
+            key: jnp.array(val.sample()) for key, val in priors.items() if val.is_fixed
+        }
+
+        first_key = next(iter(transformed.keys()))
+        for key, value in fixed_parameters.items():
+            transformed[key] = jnp.full_like(transformed[first_key], value)
+    return transformed
 
 
 @partial(jax.jit, static_argnames=("priors",))
